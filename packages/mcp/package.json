@@ -1,0 +1,28 @@
+{
+  "name": "@sourcebook/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing Sourcebook projects and templates to LLM assistants",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "sourcebook-mcp": "./src/stdio.ts"
+  },
+  "scripts": {
+    "start": "tsx src/stdio.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "@sourcebook/shared": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.2"
+  }
+}

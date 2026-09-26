@@ -3,6 +3,7 @@ import {
   BlockIdParamsSchema,
   CreateSubBlockBodySchema,
   DeleteSubBlockQuerySchema,
+  EditSubBlockBodySchema,
   ReorderSubBlocksBodySchema,
   SubBlockParamsSchema,
   UpdateSubBlockBodySchema,
@@ -31,6 +32,12 @@ export const subBlockRoutes =
       "/blocks/:blockId/subblocks/:subBlockId",
       { schema: { params: SubBlockParamsSchema, body: UpdateSubBlockBodySchema } },
       async (req) => req.nb.store.updateSubBlock(req.params.blockId, req.params.subBlockId, req.body),
+    );
+
+    app.post(
+      "/blocks/:blockId/subblocks/:subBlockId/edit",
+      { schema: { params: SubBlockParamsSchema, body: EditSubBlockBodySchema } },
+      async (req) => req.nb.store.editSubBlock(req.params.blockId, req.params.subBlockId, req.body.edits, req.body.expectedRev),
     );
 
     app.delete(

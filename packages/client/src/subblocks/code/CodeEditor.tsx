@@ -3,11 +3,13 @@ import type { EditorView } from "@codemirror/view";
 import { EditorView as View } from "codemirror";
 import { useMemo, useRef, useState } from "react";
 import { useCommentAnchoring, type AnchorAdapter } from "../../comments/useCommentAnchoring";
+import { AskAiButton } from "../../ai/AskAiButton";
+import { copyText } from "../../clipboard";
 import { CodeMirror } from "../../components/CodeMirror";
 import type { SubBlockProps } from "../types";
 import { commentLines, commentRanges, setCommentRanges } from "./commentLines";
 
-export function CodeEditor({ blockId, subBlock, onChange, commentBridge }: SubBlockProps<CodeContent>) {
+export function CodeEditor({ blockId, subBlock, onChange, commentBridge, refLabel }: SubBlockProps<CodeContent>) {
   const [language, setLanguage] = useState(subBlock.content.language);
   const code = useRef(subBlock.content.code);
   const lang = languageById(language) ?? CODE_LANGUAGES[0];
@@ -92,7 +94,7 @@ export function CodeEditor({ blockId, subBlock, onChange, commentBridge }: SubBl
         {commentBridge && (
           <button
             type="button"
-            className="comment-lines-btn"
+            className="comment-lines-btn first"
             disabled={!view}
             title={hasSelection ? "Comment on the selected lines" : "Comment on the line with the cursor (or click the gutter)"}
             onMouseDown={(e) => e.preventDefault()}
@@ -103,6 +105,36 @@ export function CodeEditor({ blockId, subBlock, onChange, commentBridge }: SubBl
           >
             💬+ {hasSelection ? "Comment lines" : "Comment line"}
           </button>
+        )}
+        {refLabel && (
+          <button
+            type="button"
+            className="comment-lines-btn"
+            disabled={!view}
+            title="Copy a reference to the selected lines, to paste in a chat with the assistant"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              if (!view) return;
+              const sel = view.state.selection.main;
+              const first = view.state.doc.lineAt(sel.from).number;
+              const last = view.state.doc.lineAt(Math.max(sel.from, sel.to - (sel.empty ? 0 : 1))).number;
+              void copyText(`${refLabel}:L${first}${last !== first ? `-${last}` : ""}`);
+            }}
+          >
+            🔗 Copy lines ref
+          </button>
+        )}
+        {view && (
+          <AskAiButton
+            className="comment-lines-btn ask-ai-inline"
+            label={hasSelection ? "Ask AI about lines" : "Ask AI about line"}
+            target={() => {
+              const sel = view.state.selection.main;
+              const first = view.state.doc.lineAt(sel.from).number;
+              const last = view.state.doc.lineAt(Math.max(sel.from, sel.to - (sel.empty ? 0 : 1))).number;
+              return { kind: "selection", ref: refLabel ?? subBlock.id, id: subBlock.id, type: "code", title: subBlock.title, lines: { first, last } };
+            }}
+          />
         )}
       </div>
       <CodeMirror

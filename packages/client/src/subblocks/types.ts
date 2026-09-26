@@ -11,6 +11,8 @@ export interface SubBlockProps<TContent> {
   saveNow(): Promise<void>;
   /** Present for types with `commentAnchor`: lets the editor show and create text/line comments. */
   commentBridge?: CommentBridge;
+  /** Outline reference of the sub-block, e.g. "§2.1#3" (for copying precise references). */
+  refLabel?: string;
 }
 
 /** Frontend half of a sub-block type: the shared core contract plus UI. */

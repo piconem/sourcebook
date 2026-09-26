@@ -3,6 +3,8 @@ import type {
   Block,
   BlockDeletionImpact,
   CreateProjectBody,
+  McpSettingsView,
+  UpdateMcpSettingsBody,
   NotebookKind,
   ProjectSummary,
   UpdateProjectBody,
@@ -34,6 +36,17 @@ export function setNotebookBase(kind: NotebookKind, id: string) {
 }
 export const notebookBase = () => nbBase;
 
+/** Identifies this browser tab in live events (its own changes are not echoed back as "external"). */
+export const CLIENT_ID = `web-${Math.random().toString(36).slice(2, 10)}`;
+
+/** fetch() tagged with this tab's client id. */
+export function apiFetch(url: string, init: RequestInit = {}) {
+  return fetch(url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), "x-sourcebook-client": CLIENT_ID } });
+}
+
+/** sourcebook:// URI of an element of the open project/template, e.g. sections/<id>. */
+export const notebookUri = (path: string) => `sourcebook:/${nbBase.replace(/^\/api/, "")}/${path}`;
+
 const commentsUrl = (blockId: string, subBlockId: string) => `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}/comments`;
 
 export interface TemplateImportPreview {
@@ -57,7 +70,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method,
     headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -79,7 +92,7 @@ export const api = {
   blockDeletionImpact: (id: string) => request<BlockDeletionImpact>("GET", `${nbBase}/blocks/${id}/deletion-impact`),
   getExport: () => request<{ fileName: string; markdown: string; files: string[] }>("GET", `${nbBase}/export`),
   async getExportZip(): Promise<Blob> {
-    const res = await fetch(`${nbBase}/export.zip`);
+    const res = await apiFetch(`${nbBase}/export.zip`);
     if (!res.ok) throw new ApiError(res.status, res.statusText);
     return res.blob();
   },
@@ -109,7 +122,7 @@ export const api = {
 
   /** Template as a ZIP archive (manifest + folder, comments excluded). */
   async exportTemplate(id: string): Promise<{ blob: Blob; name: string }> {
-    const res = await fetch(`/api/templates/${encodeURIComponent(id)}/archive.zip`);
+    const res = await apiFetch(`/api/templates/${encodeURIComponent(id)}/archive.zip`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, err.error ?? res.statusText);
@@ -129,11 +142,15 @@ export const api = {
     form.append("file", file, file.name);
     const q = new URLSearchParams(opts.dryRun ? { dryRun: "1" } : {});
     if (opts.name) q.set("name", opts.name);
-    const res = await fetch(`/api/templates/import?${q}`, { method: "POST", body: form });
+    const res = await apiFetch(`/api/templates/import?${q}`, { method: "POST", body: form });
     const body = await res.json().catch(() => ({ error: res.statusText }));
     if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText, body.details);
     return body;
   },
+
+  // ---- settings ----
+  getMcpSettings: () => request<McpSettingsView>("GET", "/api/settings/mcp"),
+  updateMcpSettings: (body: UpdateMcpSettingsBody) => request<McpSettingsView>("PUT", "/api/settings/mcp", body),
 
   // ---- user & comments ----
   getUser: () => request<UserProfile>("GET", "/api/user"),
@@ -158,7 +175,7 @@ export const api = {
   deleteReferences: (paths: string[]) => request<{ deleted: string[] }>("POST", `${nbBase}/references/delete`, { paths }),
   /** ZIP of files/folders, entries relative to `base`. Returns the archive and its suggested name. */
   async zipReferences(paths: string[], base: string): Promise<{ blob: Blob; name: string }> {
-    const res = await fetch(`${nbBase}/references/zip`, {
+    const res = await apiFetch(`${nbBase}/references/zip`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ paths, base }),
@@ -174,7 +191,7 @@ export const api = {
   async uploadReferences(dir: string, files: File[]): Promise<{ paths: string[] }> {
     const form = new FormData();
     files.forEach((f) => form.append("file", f, f.name));
-    const res = await fetch(`${nbBase}/references/upload?dir=${encodeURIComponent(dir)}`, { method: "POST", body: form });
+    const res = await apiFetch(`${nbBase}/references/upload?dir=${encodeURIComponent(dir)}`, { method: "POST", body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, err.error ?? res.statusText);
@@ -185,7 +202,7 @@ export const api = {
   async uploadAsset(blockId: string, file: File): Promise<UploadAssetResponse> {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`${nbBase}/assets?blockId=${encodeURIComponent(blockId)}`, { method: "POST", body: form });
+    const res = await apiFetch(`${nbBase}/assets?blockId=${encodeURIComponent(blockId)}`, { method: "POST", body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, err.error ?? res.statusText);

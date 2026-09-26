@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { api, referenceUrl } from "../api/client";
 import { Dialog } from "../components/Dialog";
+import { AskAiButton } from "../ai/AskAiButton";
 import { ContextMenu } from "../components/ContextMenu";
 import { saveBlob } from "../download";
 import { PromptDialog } from "../components/PromptDialog";
@@ -443,6 +444,9 @@ export function ReferencesBrowser() {
               {iconOf(selectedNode)} {selectedNode.name}
             </span>
             <button onClick={() => openNode(selectedNode)}>Open</button>
+            {selectedNode.kind === "file" && (
+              <AskAiButton className="ask-ai-inline" label="Ask AI" target={() => ({ kind: "reference", path: selectedNode.path })} />
+            )}
             <button onClick={() => download([selectedNode])}>{selectedNode.kind === "dir" ? "Download ZIP" : "Download"}</button>
             <button onClick={() => ask({ kind: "rename", node: selectedNode })}>Rename</button>
             <button className="danger" onClick={() => ask({ kind: "delete", nodes: [selectedNode] })}>

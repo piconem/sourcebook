@@ -214,7 +214,9 @@ export class WorkspaceStore {
         if (!existsSync(dir)) throw notFound(`${kind === "projects" ? "Project" : "Template"} ${id}`);
         const store = await NotebookStore.open(dir, this.registry);
         store.displayName = (await this.meta(kind, id)).name;
-        return { kind, id, store, refs: new ReferencesStore(dir) };
+        const refs = new ReferencesStore(dir);
+        refs.onChange = () => store.notify({ type: "references" });
+        return { kind, id, store, refs };
       })();
       this.open_.set(key, ctx);
       ctx.catch(() => this.open_.delete(key));

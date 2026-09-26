@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, posix } from "node:path";
@@ -23,6 +24,8 @@ import {
   type CreateBlockBody,
   type CreateSubBlockBody,
   type DeleteSubBlockResult,
+  type NotebookEvent,
+  type TextEdit,
   type NotebookEntry,
   type NotebookIndex,
   type Project,
@@ -34,6 +37,7 @@ import {
   type UpdateSubBlockBody,
 } from "@sourcebook/shared";
 import { HttpError, badRequest, notFound } from "../errors.js";
+import { currentOrigin } from "../requestContext.js";
 import { readJson, writeFileAtomic, writeJsonAtomic } from "../fs/atomic.js";
 import { Mutex } from "../fs/mutex.js";
 import { blockFolderName, subBlockBaseName } from "../fs/names.js";
@@ -74,6 +78,12 @@ export class NotebookStore {
   private mutex = new Mutex();
   /** Display name (from project.json); defaults to the folder name. */
   displayName: string;
+  /** Emits "event" (NotebookEvent) after every successful change, for live updates of open editors. */
+  readonly events = new EventEmitter().setMaxListeners(100);
+
+  notify(event: Omit<NotebookEvent, "origin">) {
+    this.events.emit("event", { ...event, origin: currentOrigin() } satisfies NotebookEvent);
+  }
 
   private constructor(
     readonly root: string,
@@ -114,6 +124,7 @@ export class NotebookStore {
     const subBlocks = await Promise.all(
       meta.subBlocks.map(async (ref) => ({
         ...ref,
+        rev: ref.rev ?? 0,
         content: await this.readContent(entry.folder, ref),
         commentCount: (await this.readComments(entry.folder, ref)).comments.length,
       })),
@@ -166,6 +177,7 @@ export class NotebookStore {
       children.set(parentId, siblings);
       const entries = [...this.index.blocks, { id, title: body.title, parentId, order: 0, folder }];
       await this.applyLayout(this.flatten(children), entries);
+      this.notify({ type: "blocks", blockId: id });
       return this.entry(id);
     });
   }
@@ -189,6 +201,7 @@ export class NotebookStore {
         meta.parentId = parentId;
       }
       await this.applyLayout(this.flatten(children), this.index.blocks, new Set([id]));
+      this.notify({ type: "blocks", blockId: id });
       return this.entry(id);
     });
   }
@@ -214,6 +227,7 @@ export class NotebookStore {
         this.flatten(children),
         this.index.blocks.filter((e) => !doomed.has(e.id)),
       );
+      this.notify({ type: "blocks", blockId: id });
     });
   }
 
@@ -257,6 +271,7 @@ export class NotebookStore {
         }
       }
       await this.applyLayout(this.flatten(children), this.index.blocks, changedParents);
+      this.notify({ type: "blocks" });
       return this.getProject();
     });
   }
@@ -283,7 +298,8 @@ export class NotebookStore {
       const list = [...meta.subBlocks];
       list.splice(Math.min(body.position ?? list.length, list.length), 0, ref);
       await this.applySubBlockLayout(entry.folder, meta, list);
-      return { ...ref, content };
+      this.notify({ type: "block", blockId, subBlockId: ref.id });
+      return { ...ref, rev: 0, content };
     });
   }
 
@@ -292,28 +308,73 @@ export class NotebookStore {
     subBlockId: string,
     body: UpdateSubBlockBody,
   ): Promise<SubBlockRef & { content: unknown }> {
+    return this.mutex.run(() => this.applySubBlockUpdate(blockId, subBlockId, body));
+  }
+
+  /** Must run inside the mutex. */
+  private async applySubBlockUpdate(blockId: string, subBlockId: string, body: UpdateSubBlockBody) {
+    const entry = this.entry(blockId);
+    const meta = this.meta(blockId);
+    const ref = this.subRef(meta, subBlockId);
+    const def = this.typeOf(ref.type);
+    const dir = join(this.root, BLOCKS_DIR, entry.folder, SUBBLOCKS_DIR);
+    if (body.expectedRev !== undefined && body.expectedRev !== (ref.rev ?? 0)) {
+      throw new HttpError(409, "The sub-block was changed in the meantime; reload it and retry", { currentRev: ref.rev ?? 0 });
+    }
+
+    let content: unknown;
+    if (body.content !== undefined) {
+      content = this.validateContent(def, body.content);
+      const serialized = await this.writeSource(entry.folder, ref, def, content);
+      // Without new exports (e.g. an edit through the API/MCP), previous exports would show stale content.
+      const assets = [...(serialized.assets ?? []), ...(body.exports ?? [])];
+      await this.replaceExports(dir, ref, assets);
+      ref.rev = (ref.rev ?? 0) + 1;
+    } else {
+      content = await this.readContent(entry.folder, ref);
+      if (body.exports !== undefined) await this.replaceExports(dir, ref, body.exports);
+    }
+    if (body.props) ref.props = body.props;
+    if (body.title !== undefined) ref.title = optionalText(body.title);
+    if (body.objective !== undefined) ref.objective = optionalText(body.objective);
+    await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+    this.notify({ type: "subblock", blockId, subBlockId, rev: ref.rev ?? 0 });
+    return { ...ref, rev: ref.rev ?? 0, content };
+  }
+
+  /**
+   * Applies text edits to a sub-block's source (find/replace or line ranges, in order) atomically, then
+   * validates and saves like a content update. Nothing is written if any edit fails.
+   */
+  editSubBlock(blockId: string, subBlockId: string, edits: TextEdit[], expectedRev?: number) {
     return this.mutex.run(async () => {
       const entry = this.entry(blockId);
-      const meta = this.meta(blockId);
-      const ref = this.subRef(meta, subBlockId);
+      const ref = this.subRef(this.meta(blockId), subBlockId);
       const def = this.typeOf(ref.type);
-      const dir = join(this.root, BLOCKS_DIR, entry.folder, SUBBLOCKS_DIR);
-
-      let content: unknown;
-      if (body.content !== undefined) {
-        content = this.validateContent(def, body.content);
-        const serialized = await this.writeSource(entry.folder, ref, def, content);
-        const assets = [...(serialized.assets ?? []), ...(body.exports ?? [])];
-        if (body.exports !== undefined || serialized.assets) await this.replaceExports(dir, ref, assets);
-      } else {
-        content = await this.readContent(entry.folder, ref);
-        if (body.exports !== undefined) await this.replaceExports(dir, ref, body.exports);
-      }
-      if (body.props) ref.props = body.props;
-      if (body.title !== undefined) ref.title = optionalText(body.title);
-      if (body.objective !== undefined) ref.objective = optionalText(body.objective);
-      await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
-      return { ...ref, content };
+      let text = def.serialize(await this.readContent(entry.folder, ref)).source;
+      edits.forEach((e, i) => {
+        const label = edits.length > 1 ? `Edit ${i + 1}: ` : "";
+        if ("find" in e) {
+          const count = text.split(e.find).length - 1;
+          if (!count) throw badRequest(`${label}text not found: ${JSON.stringify(e.find.slice(0, 120))}`);
+          if (count > 1 && !e.all) {
+            throw badRequest(`${label}text occurs ${count} times: include more surrounding text to make it unique, or set "all"`);
+          }
+          text = e.all ? text.split(e.find).join(e.replace) : text.replace(e.find, () => e.replace);
+        } else {
+          const trailing = text.endsWith("\n");
+          const lines = (trailing ? text.slice(0, -1) : text).split("\n");
+          const count = text === "" ? 0 : lines.length;
+          const { first, last } = e.lines;
+          if (first > count + 1 || last > count) throw badRequest(`${label}lines ${first}-${last} are outside the text (${count} lines)`);
+          const replacement = e.text === "" ? [] : e.text.replace(/\n$/, "").split("\n");
+          const base = text === "" ? [] : lines;
+          base.splice(first - 1, last - first + 1, ...replacement);
+          text = base.join("\n") + (trailing || text === "" ? "\n" : "");
+        }
+      });
+      const content = def.deserialize(text, undefined, { sourceExt: extname(ref.source).slice(1) });
+      return this.applySubBlockUpdate(blockId, subBlockId, { content, expectedRev });
     });
   }
 
@@ -326,6 +387,7 @@ export class NotebookStore {
       }
       const list = order.map((id) => this.subRef(meta, id));
       await this.applySubBlockLayout(entry.folder, meta, list);
+      this.notify({ type: "block", blockId });
       return meta.subBlocks;
     });
   }
@@ -360,6 +422,7 @@ export class NotebookStore {
       const dir = join(this.root, BLOCKS_DIR, entry.folder, SUBBLOCKS_DIR);
       for (const f of [ref.source, ...ref.exports, commentsFileName(ref)]) await rm(join(dir, f), { force: true });
       await this.applySubBlockLayout(entry.folder, meta, remaining);
+      this.notify({ type: "block", blockId, subBlockId });
       return result;
     });
   }
@@ -372,6 +435,7 @@ export class NotebookStore {
       await mkdir(dir, { recursive: true });
       const name = `${nanoid(10)}.${ext}`;
       await writeFile(join(dir, name), data);
+      this.notify({ type: "block", blockId });
       return `${ASSETS_DIR}/${name}`;
     });
   }
@@ -393,6 +457,7 @@ export class NotebookStore {
       }
       if (users.length) throw new HttpError(409, `${asset} is still referenced by other sub-blocks`, { subBlocks: users });
       await rm(path);
+      this.notify({ type: "block", blockId });
     });
   }
 
@@ -655,6 +720,7 @@ export class NotebookStore {
       };
       file.comments.push(comment);
       await this.writeComments(entry.folder, ref, file);
+      this.notify({ type: "comments", blockId, subBlockId });
       return anchor ? this.withResolved([comment], await this.anchorText(entry.folder, ref))[0] : comment;
     });
   }
@@ -671,6 +737,7 @@ export class NotebookStore {
       if (anchor) comment.anchor = anchor;
       else delete comment.anchor;
       await this.writeComments(entry.folder, ref, file);
+      this.notify({ type: "comments", blockId, subBlockId });
       return anchor ? this.withResolved([comment], await this.anchorText(entry.folder, ref))[0] : comment;
     });
   }
@@ -685,6 +752,7 @@ export class NotebookStore {
       const reply: CommentReply = { id: nanoid(10), author, createdAt: timestamp(comment.replies), text };
       comment.replies.push(reply);
       await this.writeComments(entry.folder, ref, file);
+      this.notify({ type: "comments", blockId, subBlockId });
       return reply;
     });
   }
@@ -704,6 +772,7 @@ export class NotebookStore {
         file.comments = file.comments.filter((c) => c.id !== commentId);
       }
       await this.writeComments(entry.folder, ref, file);
+      this.notify({ type: "comments", blockId, subBlockId });
     });
   }
 

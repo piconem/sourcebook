@@ -23,6 +23,7 @@ The workspace folder holds all projects and templates. Default `~/Sourcebook`; o
 packages/shared   zod schemas, shared types, sub-block registry contract + core type definitions
 packages/server   Fastify REST API, filesystem stores, remark (validation + combined Markdown)
 packages/client   React + Vite UI: home (projects/templates), outline (dnd-kit), TipTap, mermaid, Excalidraw, KaTeX
+packages/mcp      MCP server for LLM assistants (tools, resources, prompts; stdio binary + library used by /mcp)
 ```
 
 ## On-disk format
@@ -58,6 +59,7 @@ packages/client   React + Vite UI: home (projects/templates), outline (dnd-kit),
 | GET / PATCH / DELETE | `/api/{projects,templates}/:projectId` | summary · `{ name?, description? }` · delete the folder |
 | GET | `/api/templates/:projectId/archive.zip` | template as ZIP: `sourcebook-template.json` manifest + the template folder (comments excluded) |
 | POST | `/api/templates/import?dryRun=1&name=…` | multipart `file` (ZIP). Validated completely first: 400 `{ error, details: { errors[], warnings[] } }` if invalid; `dryRun` returns a preview `{ name, sections, subBlocks, references, warnings }` without importing |
+| GET / PUT | `/api/settings/mcp` | `{ http: { enabled }, stdio: { enabled }, readOnly }` + connection parameters (URL, stdio command/args/cwd/env) |
 | GET / PUT | `/api/user` | current user profile `{ name, username }` (stored in `~/.config/sourcebook/user.json`) |
 | GET | `/api/types` | registered sub-block types |
 
@@ -76,7 +78,9 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | GET | `…/blocks/:id/deletion-impact` | nested blocks and asset files a DELETE would remove |
 | PATCH | `…/blocks/reorder` | `{ blocks: [{ id, parentId }] }` — all blocks, depth-first |
 | POST | `…/blocks/:id/subblocks` | `{ type, content?, props?, position? }` |
-| PATCH | `…/blocks/:blockId/subblocks/:subBlockId` | `{ content?, title?, objective?, props?, exports?: [{ ext, mimeType, dataBase64 }] }` |
+| PATCH | `…/blocks/:blockId/subblocks/:subBlockId` | `{ content?, title?, objective?, props?, exports?: [{ ext, mimeType, dataBase64 }], expectedRev? }` — 409 if the revision changed |
+| POST | `…/blocks/:blockId/subblocks/:subBlockId/edit` | `{ edits: [{ find, replace, all? } \| { lines: { first, last }, text }], expectedRev? }` — atomic text edits of the source |
+| GET | `…/events` | Server-Sent Events: `{ type, blockId?, subBlockId?, rev?, origin }` after every change |
 | PATCH | `…/blocks/:blockId/subblocks/reorder` | `{ order: [subBlockId…] }` |
 | DELETE | `…/blocks/:blockId/subblocks/:subBlockId?deleteAssets=true` | → `{ deletedAssets, keptAssets }` |
 | POST | `…/assets?blockId=…` | multipart `file` → `{ path, url }` |
@@ -107,6 +111,50 @@ curl -X POST localhost:4000/api/projects/checkout/blocks/$BLOCK/subblocks/$SUB/c
   -H 'content-type: application/json' \
   -d '{"text": "Handle the timeout here", "anchor": {"lines": {"first": 12, "last": 14}}}'
 ```
+
+## Working with an AI assistant (MCP)
+`packages/mcp` is an [MCP](https://modelcontextprotocol.io) server that lets an LLM assistant read and edit
+projects and templates with you — sections, sub-blocks, lines, comments and references — through the same REST API
+(same validation; your open editor updates live). The Sourcebook server must be running (`pnpm dev`).
+
+Open **Settings (avatar) → AI assistant (MCP)** to enable or disable each transport, give the assistant read-only
+access, and copy the exact URL / command / JSON for your LLM client (computed for your machine). Settings are stored
+in `~/.config/sourcebook/settings.json` and enforced by the server: requests from a disabled transport, and MCP
+writes in read-only mode, are refused.
+
+**stdio** (the client starts the process):
+```bash
+claude mcp add sourcebook -- pnpm --silent --dir "/path/to/sourcebook" --filter @sourcebook/mcp exec tsx src/stdio.ts
+```
+**HTTP** (built into the Sourcebook server, local requests only):
+```bash
+claude mcp add --transport http sourcebook http://127.0.0.1:4000/mcp
+```
+Claude Desktop (`claude_desktop_config.json`):
+```json
+{ "mcpServers": { "sourcebook": { "command": "pnpm", "args": ["--silent", "--dir", "/path/to/sourcebook", "--filter", "@sourcebook/mcp", "exec", "tsx", "src/stdio.ts"] } } }
+```
+Environment: `SOURCEBOOK_URL` (stdio, default `http://127.0.0.1:4000`), `SOURCEBOOK_MCP_READONLY=1` (reading tools only),
+`SOURCEBOOK_MCP_AUTHOR_NAME` / `SOURCEBOOK_MCP_AUTHOR_USERNAME` (author of the assistant's comments, default
+"Claude (assistant)" / `claude`).
+
+**Ask AI**: the ✨💬 button on the document, sections, sub-blocks, selected text/code lines, comment threads and
+reference files prepares a ready-to-paste request (brainstorming, critique, build/fill, improve/rewrite, comment, or
+your own prompt) that points the assistant at exactly that element.
+
+**References** you can use in the conversation (the 🔗 buttons in the editor copy them):
+`§2.1` section · `§2.1#3` 3rd sub-block of §2.1 · `§2.1#3:L10-14` its source lines · `§2.1#3 "quoted text"` ·
+ids and `sourcebook://projects/<id>/subblocks/<id>` URIs.
+
+**Tools**: `list_workspace`, `get_outline`, `read_section`, `read_subblock`, `read_document`, `search`, `list_references`,
+`read_reference`, `list_comments` · `create_project`, `create_template`, `create_section`, `add_subblock`,
+`update_section`, `update_subblock`, `edit_subblock_text` (find/replace or line ranges, atomic), `move_section`,
+`move_subblock` · `add_comment`, `reply_to_comment`, `reanchor_comment` · destructive (the client asks first):
+`delete_section`, `delete_subblock`, `delete_comment`. Prompts: `review-section`, `fill-placeholders`, `discuss-comments`.
+
+Examples: *"Show me the outline of the payment-service project"*, *"Rewrite §2.1#1 more concisely"*,
+*"Comment §3.2#2:L4-6: the timeout is not handled"*, *"Answer the open comments in §4"*,
+*"Create a project from the thesis template and fill in the introduction with me"*.
 
 ## Adding a sub-block type
 1. `packages/shared/src/types/<type>.ts`: a `SubBlockTypeCore` (zod content schema, source extension,

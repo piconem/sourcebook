@@ -33,6 +33,8 @@ export function validatePath(path: string): string {
 export class ReferencesStore {
   private mutex = new Mutex();
   readonly dir: string;
+  /** Called after every change (wired to the notebook's live events). */
+  onChange: () => void = () => {};
 
   constructor(projectRoot: string) {
     this.dir = join(projectRoot, REFERENCES_DIR);
@@ -78,6 +80,7 @@ export class ReferencesStore {
       const abs = this.abs(rel);
       if (existsSync(abs)) throw new HttpError(409, `"${rel}" already exists`);
       await mkdir(abs, { recursive: true });
+      this.onChange();
       return rel;
     });
   }
@@ -94,6 +97,7 @@ export class ReferencesStore {
       let candidate = name;
       for (let i = 1; existsSync(join(absDir, candidate)); i++) candidate = `${stem} (${i})${ext}`;
       await writeFile(join(absDir, candidate), data);
+      this.onChange();
       return relDir ? `${relDir}/${candidate}` : candidate;
     });
   }
@@ -113,6 +117,7 @@ export class ReferencesStore {
         throw new HttpError(409, `"${target}" already exists`);
       }
       await rename(from, to);
+      this.onChange();
       return target;
     });
   }
@@ -153,6 +158,7 @@ export class ReferencesStore {
       const roots = rels.filter((r) => !rels.some((o) => o !== r && r.startsWith(`${o}/`)));
       for (const r of roots) if (!existsSync(this.abs(r))) throw notFound(`Reference ${r}`);
       for (const r of roots) await rm(this.abs(r), { recursive: true });
+      this.onChange();
       return roots;
     });
   }
@@ -164,6 +170,7 @@ export class ReferencesStore {
       const abs = this.abs(rel);
       if (!existsSync(abs)) throw notFound(`Reference ${rel}`);
       await rm(abs, { recursive: true });
+      this.onChange();
     });
   }
 }

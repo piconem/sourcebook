@@ -10,6 +10,9 @@ import { DocumentView } from "./components/DocumentView";
 import { OutlineTree } from "./components/OutlineTree";
 import { loadScrollMode, saveScrollMode, type ScrollMode } from "./components/scrollMode";
 import { HomePage } from "./home/HomePage";
+import { AskAiButton } from "./ai/AskAiButton";
+import { AskAiProvider } from "./ai/AskAiContext";
+import { ExternalChanges, ExternalChangesContext, subscribeProjectEvents } from "./live/externalChanges";
 import { kindLabel } from "./home/NotebookDialogs";
 import { routeHref, useRoute } from "./router";
 import { outlineNumbers, withDepth } from "./tree";
@@ -43,6 +46,9 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
     return 0;
   });
   const { data: project, error } = useProject();
+  // Live updates: changes made by the assistant (MCP), other windows or scripts appear here.
+  const [changes] = useState(() => new ExternalChanges());
+  useEffect(() => subscribeProjectEvents(qc, changes), [qc, changes]);
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState<"block" | "references">("block");
@@ -92,12 +98,15 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
   if (!project) return <p className="muted editor-error">Loading…</p>;
 
   return (
+    <ExternalChangesContext.Provider value={changes}>
+    <AskAiProvider project={{ kind, id, name: project.name }}>
     <ReferencesProvider>
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-head">
           <h1 title={project.name}>{project.name}</h1>
           {kind === "templates" && <span className="badge-template" title="Projects created from this template start with a copy of it">Template</span>}
+          <AskAiButton target={() => ({ kind: "document" })} />
           <button
             className="icon"
             title="Export combined Markdown (ZIP)"
@@ -146,6 +155,8 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
       <ExportDialog open={exporting} onClose={() => setExporting(false)} />
     </div>
     </ReferencesProvider>
+    </AskAiProvider>
+    </ExternalChangesContext.Provider>
   );
 }
 

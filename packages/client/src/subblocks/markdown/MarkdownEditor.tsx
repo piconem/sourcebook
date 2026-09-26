@@ -4,6 +4,8 @@ import type { TextRange } from "@sourcebook/shared";
 import { useCommentAnchoring, type AnchorAdapter } from "../../comments/useCommentAnchoring";
 import { CommentHighlights, commentHighlightsKey, docText, highlightRanges } from "./commentHighlights";
 import { referenceHrefFromSubBlock, referencePathFromHref } from "../../api/client";
+import { AskAiButton } from "../../ai/AskAiButton";
+import { copyText } from "../../clipboard";
 import { ReferencePickerDialog } from "../../references/ReferencePickerDialog";
 import { useReferences } from "../../references/ReferencesContext";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
@@ -64,7 +66,7 @@ function insertReferenceLink(editor: Editor, node: ReferenceNode) {
   }
 }
 
-export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge }: SubBlockProps<MarkdownContent>) {
+export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge, refLabel }: SubBlockProps<MarkdownContent>) {
   const [picking, setPicking] = useState(false);
   const references = useReferences();
   const bridgeRef = useRef(commentBridge);
@@ -184,6 +186,35 @@ export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge }: S
           }}
         >
           💬+ Comment
+        </button>
+      )}
+      {bubble && (
+        <span className="selection-ask-ai" style={{ top: bubble.top, left: bubble.left + (refLabel ? 210 : 110) }}>
+          <AskAiButton
+            className="selection-comment ask"
+            label="Ask AI"
+            target={() => {
+              const { from, to } = editor.state.selection;
+              return { kind: "selection", ref: refLabel ?? subBlock.id, id: subBlock.id, type: "markdown", title: subBlock.title, quote: editor.state.doc.textBetween(from, to, "\n").slice(0, 1000) };
+            }}
+          />
+        </span>
+      )}
+      {bubble && refLabel && (
+        <button
+          type="button"
+          className="selection-comment copy"
+          style={{ top: bubble.top, left: bubble.left + 110 }}
+          title="Copy a reference to the selected text, to paste in a chat with the assistant"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            const { from, to } = editor.state.selection;
+            const quote = editor.state.doc.textBetween(from, to, "\n").slice(0, 300);
+            void copyText(`${refLabel} "${quote}"`);
+            setBubble(null);
+          }}
+        >
+          🔗 Copy ref
         </button>
       )}
       <Toolbar editor={editor} onLinkReference={() => setPicking(true)} />

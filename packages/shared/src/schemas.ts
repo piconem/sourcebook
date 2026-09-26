@@ -33,6 +33,8 @@ export const SubBlockRefSchema = z.object({
   /** Exported artifact file names (e.g. PNG) inside `subblocks/`. */
   exports: z.array(z.string()),
   props: z.record(z.string(), z.unknown()),
+  /** Content revision, incremented on every content change (optimistic concurrency, live sync). */
+  rev: z.number().int().nonnegative().optional(),
 });
 export type SubBlockRef = z.infer<typeof SubBlockRefSchema>;
 
@@ -122,7 +124,33 @@ export const UpdateSubBlockBodySchema = z.object({
   props: z.record(z.string(), z.unknown()).optional(),
   /** Exported artifacts rendered by the client; replace all previous exports. */
   exports: z.array(AssetFileSchema).optional(),
+  /** Reject (409) when the stored revision differs: the content changed since it was read. */
+  expectedRev: z.number().int().nonnegative().optional(),
 });
+
+/** Surgical edits of a sub-block's source text, applied atomically on the server. */
+export const TextEditSchema = z.union([
+  z.object({
+    /** Exact text to replace; must occur exactly once unless `all` is set. */
+    find: z.string().min(1),
+    replace: z.string(),
+    all: z.boolean().optional(),
+  }),
+  z.object({
+    /** 1-based source lines to replace (inclusive) with `text` (may be empty to delete them). */
+    lines: z
+      .object({ first: z.number().int().min(1), last: z.number().int().min(0) })
+      .refine((l) => l.last >= l.first - 1, "lines.last must be ≥ lines.first - 1 (first - 1 inserts before first)"),
+    text: z.string(),
+  }),
+]);
+export type TextEdit = z.infer<typeof TextEditSchema>;
+
+export const EditSubBlockBodySchema = z.object({
+  edits: z.array(TextEditSchema).min(1).max(200),
+  expectedRev: z.number().int().nonnegative().optional(),
+});
+export type EditSubBlockBody = z.infer<typeof EditSubBlockBodySchema>;
 export type UpdateSubBlockBody = z.infer<typeof UpdateSubBlockBodySchema>;
 
 export const ReorderSubBlocksBodySchema = z.object({ order: z.array(IdSchema) });
@@ -194,11 +222,13 @@ export const UsernameSchema = z
 export const AuthorSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
   username: UsernameSchema,
+  /** "assistant" for comments written by an AI assistant (e.g. through MCP). */
+  kind: z.enum(["user", "assistant"]).optional(),
 });
 export type Author = z.infer<typeof AuthorSchema>;
 
-export const UserProfileSchema = AuthorSchema;
-export type UserProfile = Author;
+export const UserProfileSchema = AuthorSchema.omit({ kind: true });
+export type UserProfile = z.infer<typeof UserProfileSchema>;
 
 /**
  * Where a comment points inside a text-based sub-block (W3C Web Annotation "text quote" style):
@@ -320,3 +350,44 @@ export const UpdateProjectBodySchema = z
   })
   .refine((b) => b.name !== undefined || b.description !== undefined, "Nothing to update");
 export type UpdateProjectBody = z.infer<typeof UpdateProjectBodySchema>;
+
+// ---- Live events ----
+
+/** Change notification streamed to open editors (Server-Sent Events). */
+export interface NotebookEvent {
+  type: "blocks" | "block" | "subblock" | "comments" | "references";
+  blockId?: string;
+  subBlockId?: string;
+  /** New content revision (subblock events). */
+  rev?: number;
+  /** Client that caused the change (value of the x-sourcebook-client header), e.g. "mcp". */
+  origin: string;
+}
+
+// ---- MCP settings ----
+
+export const McpSettingsSchema = z.object({
+  http: z.object({ enabled: z.boolean() }),
+  stdio: z.object({ enabled: z.boolean() }),
+  /** The assistant may only read (every MCP write is refused by the server). */
+  readOnly: z.boolean(),
+});
+export type McpSettings = z.infer<typeof McpSettingsSchema>;
+
+export const UpdateMcpSettingsBodySchema = z.object({
+  http: z.object({ enabled: z.boolean() }).optional(),
+  stdio: z.object({ enabled: z.boolean() }).optional(),
+  readOnly: z.boolean().optional(),
+});
+export type UpdateMcpSettingsBody = z.infer<typeof UpdateMcpSettingsBodySchema>;
+
+/** Settings plus what an LLM client needs to connect (computed by the server). */
+export interface McpSettingsView extends McpSettings {
+  connection: {
+    http: { url: string };
+    stdio: { command: string; args: string[]; cwd: string; env: Record<string, string> };
+  };
+}
+
+/** Header sent by the MCP server with every API call ("stdio" | "http"), used to apply the settings. */
+export const MCP_TRANSPORT_HEADER = "x-sourcebook-mcp-transport";

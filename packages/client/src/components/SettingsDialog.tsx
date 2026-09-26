@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { keys, useUser } from "../api/queries";
 import { Avatar } from "./Avatar";
+import { McpSettingsSection } from "../settings/McpSettingsSection";
 import { Dialog } from "./Dialog";
 
 /** "Mario Rossi" → "mariorossi" */
@@ -16,7 +17,13 @@ export const suggestUsername = (name: string) =>
     .replace(/^[._-]+/, "")
     .slice(0, 39);
 
-export function SettingsDialog({ open, onClose }: { open: boolean; onClose(): void }) {
+export type SettingsTab = "profile" | "mcp";
+
+export function SettingsDialog({ open, onClose, initialTab = "profile" }: { open: boolean; onClose(): void; initialTab?: SettingsTab }) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
+  useEffect(() => {
+    if (open) setTab(initialTab);
+  }, [open, initialTab]);
   const qc = useQueryClient();
   const { data: user } = useUser();
   const [draft, setDraft] = useState<UserProfile>({ name: "", username: "" });
@@ -53,16 +60,35 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose(): vo
     <Dialog
       open={open}
       title="Settings"
+      wide={tab === "mcp"}
       onClose={onClose}
       actions={
-        <>
-          <button onClick={onClose}>Cancel</button>
-          <button className="primary" disabled={!parsed.success || saving} onClick={save}>
-            {saving ? "Saving…" : "Save"}
+        tab === "profile" ? (
+          <>
+            <button onClick={onClose}>Cancel</button>
+            <button className="primary" disabled={!parsed.success || saving} onClick={save}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </>
+        ) : (
+          <button className="primary" onClick={onClose}>
+            Done
           </button>
-        </>
+        )
       }
     >
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={tab === "profile"} className={tab === "profile" ? "active" : ""} onClick={() => setTab("profile")}>
+          Profile
+        </button>
+        <button role="tab" aria-selected={tab === "mcp"} className={tab === "mcp" ? "active" : ""} onClick={() => setTab("mcp")}>
+          AI assistant (MCP)
+        </button>
+      </div>
+      {tab === "mcp" ? (
+        <McpSettingsSection />
+      ) : (
+      <>
       <h3 className="settings-section">Profile</h3>
       <div className="settings-profile">
         <Avatar name={draft.name || "?"} username={draft.username || "?"} size={48} />
@@ -100,6 +126,8 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose(): vo
       </div>
       <p className="muted small">Shown as the author of your comments. Saved on this computer, for every project.</p>
       {error && <p className="render-error">{error}</p>}
+      </>
+      )}
     </Dialog>
   );
 }

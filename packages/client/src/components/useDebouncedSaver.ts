@@ -43,6 +43,17 @@ export function useDebouncedSaver<T>(save: (value: T) => Promise<void>, delay = 
     [flush, delay],
   );
 
+  /** Drops unsaved changes (e.g. when loading a newer version made elsewhere). */
+  const cancel = useCallback(() => {
+    clearTimeout(timer.current);
+    pending.current = null;
+    setError(null);
+    setState("idle");
+  }, []);
+
+  /** True while changes are waiting to be saved or being saved. */
+  const isDirty = useCallback(() => !!pending.current || !!running.current, []);
+
   useEffect(() => () => void flush(), [flush]);
-  return { schedule, flush, state, error };
+  return { schedule, flush, cancel, isDirty, state, error };
 }

@@ -252,6 +252,57 @@ projects and templates, in both scrolling modes.
   imports. The files are written to a hidden staging folder, opened once by `NotebookStore` as a final check, and
   renamed into `templates/<id>` (id from the name, de-duplicated) — a failed import leaves nothing behind.
 
+## MCP server and live collaboration
+- `packages/mcp`: one set of tools/resources/prompts (`createSourcebookMcpServer`) over an abstract `SourcebookApi`;
+  stdio (`src/stdio.ts`, HTTP to the running server) and Streamable HTTP at `/mcp` inside the server (stateless, one
+  MCP server per request, in-process through `app.inject`; only local Host/Origin accepted). All writes go through the
+  REST API, so validation, locking, revisions and live events are shared with the web editor.
+- References: outline numbers (`§2.1`, `§2.1#3`, `§2.1#3:L10-14`, `§2.1#3!c<id>`), ids and `sourcebook://` URIs resolve to
+  the same element; every tool answer repeats number + id so the assistant can keep using ids after reordering.
+- Sub-blocks carry `rev` (incremented on each content change). PATCH/edit accept `expectedRev` → 409 on mismatch.
+  `POST …/edit` applies find/replace (must be unique unless `all`) or line-range edits on the type's source text inside
+  the store mutex, then validates like any update — all or nothing.
+- Content changed without new exports (API/MCP) drops the stale PNG/SVG; the editor regenerates missing exports
+  when it shows the sub-block.
+- Live events: `NotebookStore` emits after every mutation (blocks, sub-blocks, comments, assets, references); the
+  `origin` comes from the `x-sourcebook-client` header via AsyncLocalStorage (web tabs send a per-tab id, MCP sends
+  `mcp`). `GET …/events` streams them (SSE, 25 s heartbeat). The editor refetches what changed; a sub-block with a newer
+  revision reloads in place ("Updated by the assistant") unless there are unsaved local edits, in which case a banner
+  offers "Load their version" / "Keep mine" — a stale save is refused with 409 and opens the same banner.
+- MCP settings (Settings → AI assistant): HTTP on/off, stdio on/off, read-only; stored in `settings.json` in the config
+  dir and kept in memory. The MCP server tags every API call with `x-sourcebook-mcp-transport: stdio|http`; a global
+  `onRequest` hook refuses (403) calls from a disabled transport and non-GET MCP calls in read-only mode (reading
+  `/api/settings/mcp` stays allowed so the stdio process can explain why). `/mcp` answers 503 when HTTP is off and
+  registers only reading tools in read-only mode. `GET /api/settings/mcp` also returns the connection parameters
+  (URL with the real port; stdio command/args with the repository path from `packages/server/src/paths.ts`), from which
+  the UI builds copyable Claude Code commands and client JSON (shell-quoted: the path may contain `&`).
+- Comments by the assistant carry `author.kind: "assistant"` and show an "AI" badge. 🔗 buttons copy references
+  (section, sub-block, code lines, quoted Markdown text) to paste in the chat.
+- Limits: sub-blocks move only within their section; images/drawings are read as descriptions and cannot be written
+  via MCP; binary references (PDF, Office) cannot be read as text.
+
+## Ask AI (prompts for the assistant)
+A speech-bubble-with-sparkles button on every element that can be referenced — the whole document (sidebar),
+sections, sub-blocks, a Markdown selection (floating bar), code lines (code toolbar), comment threads and text
+reference files — opens a dialog that prepares a request to paste into a chat with an assistant connected via MCP:
+a precise reference (outline number, id, `sourcebook://` URI), how to read the target with the MCP tools, and
+instructions for the chosen kind of interaction, plus optional custom text (`packages/client/src/ai/prompts.ts`).
+
+| Target | Brainstorming | Critique | Build / Fill | Improve / Rewrite | Comment | Custom |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| Document | ✓ | ✓ | ✓ (placeholders, empty sections) | – (too broad) | ✓ (comments across) | ✓ |
+| Section | ✓ | ✓ | ✓ (creates sub-blocks) | ✓ | ✓ | ✓ |
+| Sub-block: markdown, code | ✓ | ✓ | ✓ | ✓ | ✓ on lines/quotes | ✓ |
+| Sub-block: mermaid, equation | ✓ | ✓ | ✓ | ✓ | ✓ whole sub-block | ✓ |
+| Sub-block: image, drawing | ✓ | ✓ | – (not writable via MCP) | – | ✓ whole sub-block | ✓ |
+| Selection (text / code lines) | ✓ | ✓ | ✓ (expand) | ✓ (only that part) | ✓ anchored | ✓ |
+| Comment thread | – | – | – | – | ✓ discuss & reply | ✓ |
+| Reference file | ✓ | ✓ | – | – | – | ✓ |
+
+Writing modes (build, improve, comment) are disabled when the MCP settings grant read-only access; a warning appears
+when both transports are off. The last used mode is remembered. A test checks that every reference written in the
+prompts is parsed by the MCP server's reference parser.
+
 ## Known limitations
 - References cannot be moved between folders (rename only); links from Markdown are not updated on rename.
 - Excalidraw appState is saved as-is (includes view state such as scroll/zoom).

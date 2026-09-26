@@ -10,6 +10,6 @@ const { values } = parseArgs({
 const workspaceDir = resolve(values.workspace ?? process.env.SOURCEBOOK_WORKSPACE ?? join(homedir(), "Sourcebook"));
 const port = Number(values.port ?? process.env.PORT ?? 4000);
 
-const { app } = await buildApp(workspaceDir, { logger: true });
+const { app } = await buildApp(workspaceDir, { logger: true, port });
 await app.listen({ port, host: "127.0.0.1" });
 app.log.info(`Sourcebook workspace: ${workspaceDir}`);

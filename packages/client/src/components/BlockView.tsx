@@ -4,7 +4,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Block, BlockDeletionImpact, CommentAnchor, SubBlock } from "@sourcebook/shared";
 import { CommentBridge } from "../comments/bridge";
 import { Fragment, useEffect, useRef, useState } from "react";
-import { api } from "../api/client";
+import { api, notebookUri } from "../api/client";
+import { CopyReferenceButton } from "./CopyReferenceButton";
+import { AskAiButton } from "../ai/AskAiButton";
 import { keys, useBlock } from "../api/queries";
 import { registry } from "../subblocks";
 import { CommentsPanel } from "../comments/CommentsPanel";
@@ -134,6 +136,8 @@ export function BlockView({
     <article className={`block-view${commentsOpen.size ? " with-comments" : ""}`}>
       <div className={`block-head depth-${Math.min(depth, 3)}`}>
         {number && <span className="block-number">{number}</span>}
+        <CopyReferenceButton text={`${number ? `§${number} ` : ""}${notebookUri(`sections/${blockId}`)}`} label={number ? `§${number}` : undefined} />
+        <AskAiButton target={() => ({ kind: "section", number: number ?? "?", id: blockId, title: block.title })} />
         <input
           className="block-title"
           value={title}
@@ -249,12 +253,14 @@ export function BlockView({
                 onToggleComments={() => showComments(s.id, !commentsOpen.has(s.id))}
                 onAddComment={() => startComment(s.id)}
                 commentBridge={bridgeFor(s.id)}
+                refLabel={number ? `§${number}#${i + 1}` : undefined}
               />
               {commentsOpen.has(s.id) ? (
                 <CommentsPanel
                   blockId={blockId}
                   subBlock={s}
                   bridge={bridgeFor(s.id)}
+                  refLabel={number ? `§${number}#${i + 1}` : undefined}
                   composing={composing.get(s.id)}
                   onCompose={(anchor) => setComposer(s.id, anchor)}
                   onCancelCompose={() => setComposer(s.id, undefined)}

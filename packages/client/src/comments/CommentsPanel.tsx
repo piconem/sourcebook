@@ -1,9 +1,10 @@
 import type { Comment, CommentAnchor, CommentReply, SubBlock } from "@sourcebook/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../api/client";
 import { keys, useUser } from "../api/queries";
 import { Avatar } from "../components/Avatar";
+import { AskAiButton } from "../ai/AskAiButton";
 import { useBridge, type AnchorStatus, type CommentBridge } from "./bridge";
 import { fullTime, relativeTime } from "./time";
 
@@ -52,18 +53,22 @@ function Composer(props: { placeholder: string; submitLabel: string; onSubmit(te
   );
 }
 
-function Entry({ entry, onDelete, kind }: { entry: Comment | CommentReply; onDelete(): Promise<void>; kind: "comment" | "reply" }) {
+function Entry({ entry, onDelete, kind, actions }: { entry: Comment | CommentReply; onDelete(): Promise<void>; kind: "comment" | "reply"; actions?: ReactNode }) {
   const [confirming, setConfirming] = useState(false);
   return (
     <div className={`comment-entry ${kind}`}>
       <div className="comment-meta">
         <Avatar name={entry.author.name} username={entry.author.username} size={kind === "comment" ? 26 : 22} />
         <div className="comment-who">
-          <span className="comment-name">{entry.author.name}</span>
+          <span className="comment-name">
+            {entry.author.name}
+            {entry.author.kind === "assistant" && <span className="badge-ai" title="Written by an AI assistant">AI</span>}
+          </span>
           <span className="muted small">
             @{entry.author.username} · <time dateTime={entry.createdAt} title={fullTime(entry.createdAt)}>{relativeTime(entry.createdAt)}</time>
           </span>
         </div>
+        {actions}
         {confirming ? (
           <span className="comment-confirm">
             <button className="link danger" onClick={() => onDelete().finally(() => setConfirming(false))}>
@@ -116,6 +121,8 @@ export function CommentsPanel(props: {
   onCompose(anchor: CommentAnchor | null): void;
   onCancelCompose(): void;
   onClose(): void;
+  /** Outline reference of the sub-block, e.g. "§2.1#3". */
+  refLabel?: string;
 }) {
   const { blockId, subBlock, bridge } = props;
   const qc = useQueryClient();
@@ -191,7 +198,17 @@ export function CommentsPanel(props: {
             }}
           >
             {c.anchor && <Quote anchor={c.anchor} status={st} />}
-            <Entry kind="comment" entry={c} onDelete={() => api.deleteComment(blockId, subBlock.id, c.id).then(refresh)} />
+            <Entry
+              kind="comment"
+              entry={c}
+              onDelete={() => api.deleteComment(blockId, subBlock.id, c.id).then(refresh)}
+              actions={
+                <AskAiButton
+                  className="icon ask-ai-btn thread-ask-ai"
+                  target={() => ({ kind: "comment", ref: props.refLabel ?? subBlock.id, id: subBlock.id, type: subBlock.type, title: subBlock.title, commentId: c.id, author: c.author.name, excerpt: c.text })}
+                />
+              }
+            />
             {c.replies.map((r) => (
               <Entry key={r.id} kind="reply" entry={r} onDelete={() => api.deleteComment(blockId, subBlock.id, c.id, r.id).then(refresh)} />
             ))}
