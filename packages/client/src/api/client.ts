@@ -1,0 +1,218 @@
+import { filenameFrom } from "../download";
+import type {
+  Block,
+  BlockDeletionImpact,
+  CreateProjectBody,
+  NotebookKind,
+  ProjectSummary,
+  UpdateProjectBody,
+  Comment,
+  CommentAnchor,
+  CommentReply,
+  UserProfile,
+  CreateBlockBody,
+  CreateSubBlockBody,
+  DeleteSubBlockResult,
+  NotebookEntry,
+  Project,
+  ReferenceNode,
+  ReorderBlocksBody,
+  SubBlock,
+  SubBlockRef,
+  UpdateBlockBody,
+  UpdateSubBlockBody,
+  UploadAssetResponse,
+} from "@sourcebook/shared";
+
+/**
+ * Base URL of the project/template being edited (`/api/projects/<id>` or `/api/templates/<id>`);
+ * every notebook call goes through it. Set when a project or template is opened.
+ */
+let nbBase = "/api/projects/_";
+export function setNotebookBase(kind: NotebookKind, id: string) {
+  nbBase = `/api/${kind}/${encodeURIComponent(id)}`;
+}
+export const notebookBase = () => nbBase;
+
+const commentsUrl = (blockId: string, subBlockId: string) => `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}/comments`;
+
+export interface TemplateImportPreview {
+  valid: true;
+  name: string;
+  description: string;
+  sections: number;
+  subBlocks: number;
+  references: number;
+  warnings: string[];
+}
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public details?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, err.error ?? res.statusText, err.details);
+  }
+  return res.status === 204 ? (undefined as T) : res.json();
+}
+
+export const api = {
+  getProject: () => request<Project>("GET", `${nbBase}/notebook`),
+  getBlock: (id: string) => request<Block>("GET", `${nbBase}/blocks/${id}`),
+  createBlock: (body: CreateBlockBody) => request<NotebookEntry>("POST", `${nbBase}/blocks`, body),
+  updateBlock: (id: string, body: UpdateBlockBody) => request<NotebookEntry>("PATCH", `${nbBase}/blocks/${id}`, body),
+  deleteBlock: (id: string) => request<void>("DELETE", `${nbBase}/blocks/${id}`),
+  reorderBlocks: (body: ReorderBlocksBody) => request<Project>("PATCH", `${nbBase}/blocks/reorder`, body),
+  blockDeletionImpact: (id: string) => request<BlockDeletionImpact>("GET", `${nbBase}/blocks/${id}/deletion-impact`),
+  getExport: () => request<{ fileName: string; markdown: string; files: string[] }>("GET", `${nbBase}/export`),
+  async getExportZip(): Promise<Blob> {
+    const res = await fetch(`${nbBase}/export.zip`);
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    return res.blob();
+  },
+
+  addSubBlock: (blockId: string, body: CreateSubBlockBody) =>
+    request<SubBlock>("POST", `${nbBase}/blocks/${blockId}/subblocks`, body),
+  updateSubBlock: (blockId: string, subBlockId: string, body: UpdateSubBlockBody) =>
+    request<SubBlock>("PATCH", `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}`, body),
+  reorderSubBlocks: (blockId: string, order: string[]) =>
+    request<SubBlockRef[]>("PATCH", `${nbBase}/blocks/${blockId}/subblocks/reorder`, { order }),
+  deleteSubBlock: (blockId: string, subBlockId: string, deleteAssets = false) =>
+    request<DeleteSubBlockResult>(
+      "DELETE",
+      `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}?deleteAssets=${deleteAssets}`,
+    ),
+
+  deleteAsset: (blockId: string, assetPath: string) =>
+    request<void>("DELETE", `${nbBase}/blocks/${blockId}/assets/${encodeURIComponent(assetPath.replace(/^assets\//, ""))}`),
+
+  // ---- workspace: projects & templates ----
+  listNotebooks: (kind: NotebookKind) => request<ProjectSummary[]>("GET", `/api/${kind}`),
+  getNotebookSummary: (kind: NotebookKind, id: string) => request<ProjectSummary>("GET", `/api/${kind}/${encodeURIComponent(id)}`),
+  createNotebook: (kind: NotebookKind, body: CreateProjectBody) => request<ProjectSummary>("POST", `/api/${kind}`, body),
+  updateNotebook: (kind: NotebookKind, id: string, body: UpdateProjectBody) =>
+    request<ProjectSummary>("PATCH", `/api/${kind}/${encodeURIComponent(id)}`, body),
+  deleteNotebook: (kind: NotebookKind, id: string) => request<void>("DELETE", `/api/${kind}/${encodeURIComponent(id)}`),
+
+  /** Template as a ZIP archive (manifest + folder, comments excluded). */
+  async exportTemplate(id: string): Promise<{ blob: Blob; name: string }> {
+    const res = await fetch(`/api/templates/${encodeURIComponent(id)}/archive.zip`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, err.error ?? res.statusText);
+    }
+    return { blob: await res.blob(), name: filenameFrom(res.headers.get("content-disposition"), `${id}.zip`) };
+  },
+
+  /**
+   * Validates (`dryRun`) or imports a template ZIP. Invalid archives reject with an ApiError whose
+   * `details` is `{ errors: string[], warnings: string[] }`.
+   */
+  async importTemplate<T extends boolean>(
+    file: File,
+    opts: { dryRun: T; name?: string },
+  ): Promise<T extends true ? TemplateImportPreview : ProjectSummary & { warnings: string[] }> {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const q = new URLSearchParams(opts.dryRun ? { dryRun: "1" } : {});
+    if (opts.name) q.set("name", opts.name);
+    const res = await fetch(`/api/templates/import?${q}`, { method: "POST", body: form });
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText, body.details);
+    return body;
+  },
+
+  // ---- user & comments ----
+  getUser: () => request<UserProfile>("GET", "/api/user"),
+  setUser: (profile: UserProfile) => request<UserProfile>("PUT", "/api/user", profile),
+  getComments: (blockId: string, subBlockId: string) =>
+    request<{ comments: Comment[] }>("GET", commentsUrl(blockId, subBlockId)).then((r) => r.comments),
+  addComment: (blockId: string, subBlockId: string, text: string, anchor?: CommentAnchor | null) =>
+    request<Comment>("POST", commentsUrl(blockId, subBlockId), anchor ? { text, anchor } : { text }),
+  setCommentAnchor: (blockId: string, subBlockId: string, commentId: string, anchor: CommentAnchor | null) =>
+    request<Comment>("PATCH", `${commentsUrl(blockId, subBlockId)}/${commentId}`, { anchor }),
+  addReply: (blockId: string, subBlockId: string, commentId: string, text: string) =>
+    request<CommentReply>("POST", `${commentsUrl(blockId, subBlockId)}/${commentId}/replies`, { text }),
+  deleteComment: (blockId: string, subBlockId: string, commentId: string, replyId?: string) =>
+    request<void>("DELETE", `${commentsUrl(blockId, subBlockId)}/${commentId}${replyId ? `/replies/${replyId}` : ""}`),
+
+  // ---- references ----
+  getReferences: () => request<ReferenceNode>("GET", `${nbBase}/references`),
+  createReferenceFolder: (path: string) => request<{ path: string }>("POST", `${nbBase}/references/folders`, { path }),
+  renameReference: (path: string, newName: string) =>
+    request<{ path: string }>("PATCH", `${nbBase}/references/rename`, { path, newName }),
+  deleteReference: (path: string) => request<void>("DELETE", `${nbBase}/references?path=${encodeURIComponent(path)}`),
+  deleteReferences: (paths: string[]) => request<{ deleted: string[] }>("POST", `${nbBase}/references/delete`, { paths }),
+  /** ZIP of files/folders, entries relative to `base`. Returns the archive and its suggested name. */
+  async zipReferences(paths: string[], base: string): Promise<{ blob: Blob; name: string }> {
+    const res = await fetch(`${nbBase}/references/zip`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths, base }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, err.error ?? res.statusText);
+    }
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const m = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+    return { blob: await res.blob(), name: m ? decodeURIComponent(m[1]) : "references.zip" };
+  },
+  async uploadReferences(dir: string, files: File[]): Promise<{ paths: string[] }> {
+    const form = new FormData();
+    files.forEach((f) => form.append("file", f, f.name));
+    const res = await fetch(`${nbBase}/references/upload?dir=${encodeURIComponent(dir)}`, { method: "POST", body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, err.error ?? res.statusText);
+    }
+    return res.json();
+  },
+
+  async uploadAsset(blockId: string, file: File): Promise<UploadAssetResponse> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${nbBase}/assets?blockId=${encodeURIComponent(blockId)}`, { method: "POST", body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, err.error ?? res.statusText);
+    }
+    return res.json();
+  },
+};
+
+/** URL of a file inside a block folder; stable across folder renumbering. */
+export const blockFileUrl = (blockId: string, relPath: string) => `${nbBase}/blocks/${blockId}/files/${relPath}`;
+
+const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
+
+/** URL serving a reference file (inline, or as a download). */
+export const referenceUrl = (path: string, download = false) =>
+  `${nbBase}/references/file/${encodePath(path)}${download ? "?download=1" : ""}`;
+
+/** Link target for a reference from a Markdown sub-block (relative to blocks/NNN/subblocks/). */
+export const referenceHrefFromSubBlock = (path: string) => `../../../references/${encodePath(path)}`;
+
+/** Inverse of referenceHrefFromSubBlock: the reference path of a Markdown link, if it points to one. */
+export function referencePathFromHref(href: string): string | null {
+  const m = /^(?:\.\.\/)+references\/([^?#]+)/.exec(href);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
+}

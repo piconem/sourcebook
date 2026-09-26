@@ -1,0 +1,47 @@
+# Dependencies (pnpm workspace: root and packages)
+node_modules/
+
+# Build output and caches
+dist/
+build/
+*.tsbuildinfo
+.vite/
+vite.config.*.timestamp-*
+.eslintcache
+
+# Tests
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python (scripts/)
+__pycache__/
+*.py[cod]
+
+# Temporary files left by interrupted atomic writes (*.<hex>.tmp) and renames (.tmp-<id>)
+*.tmp
+.tmp-*
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (keep shared .claude/settings.json if you add one)
+.claude/settings.local.json
+
+# Sourcebook user data lives outside the repository (~/Sourcebook, ~/.config/sourcebook).
+# If you point --workspace at a folder inside the repo, ignore it here, e.g.:
+# /workspace/

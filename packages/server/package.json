@@ -1,0 +1,30 @@
+{
+  "name": "@sourcebook/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.2",
+    "@fastify/static": "^10.1.4",
+    "@sourcebook/shared": "workspace:*",
+    "fastify": "^5.12.5",
+    "fastify-type-provider-zod": "^7.0.0",
+    "fflate": "^0.8.3",
+    "nanoid": "^6.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4",
+    "tsx": "^4.23.15"
+  }
+}
