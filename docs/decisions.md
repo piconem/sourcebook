@@ -375,6 +375,19 @@ prompts is parsed by the MCP server's reference parser.
   image is **copied** into the section's `assets/` (the sub-block keeps working when the reference changes or is
   reconverted, and exports need nothing new); its caption defaults to the figure's, and the source file is attached
   to the sub-block (📎) to keep track of where it comes from. Bibliography associations stay manual.
+- Statuses (`ReferenceNode.mcp`): `native` (text, or image), `pending` (queued), `converting`, `ready`, `stale`
+  (file changed, or converted by an older logic: queued again), `failed` (error recorded in the manifest; retried only
+  when the file changes, or on "Convert again") and `unsupported`. The UI shows them as **Yes** (native, ready),
+  **Converting** (pending, converting, stale) and **No** (failed, unsupported). Native text formats are recognised by
+  extension (`NATIVE_TEXT_EXT` in `packages/shared/src/mcpContent.ts`); images are sent to the assistant scaled so the
+  longest side is ≤ 1568 px (WebP).
+- Limits: files over 200 MB are not converted automatically (they can be converted on request); at most 200 page
+  images are rendered automatically per document (more on request); a conversion taking over 10 minutes is stopped and
+  recorded as failed.
+- References UI: "Assistant ready" column / card badge with a tooltip, a folder button opening the inspector
+  (Markdown, Figures, Pages, What the assistant sees, Details) for converted or failed documents, a counter of readable
+  files with a "not readable yet" filter, and actions to convert (files, folders, selections), reconvert, render all
+  page images and delete generated content.
 - No OCR: the assistant reads page images directly (better on tables, formulas, handwriting) and can store what it read
   with `save_reference_transcription`, which replaces that page's text (marked as transcribed). Limits: layouts in
   columns may interleave; spreadsheet sheets are capped at 1000 rows × 40 columns; ZIPs include up to 200 files, one
@@ -382,4 +395,6 @@ prompts is parsed by the MCP server's reference parser.
 
 ## Known limitations
 - References cannot be moved between folders (rename only).
+- The MCP `search` tool looks in the notebook and the bibliography, not inside reference files or their converted
+  Markdown (read them with `read_reference`).
 - Excalidraw appState is saved as-is (includes view state such as scroll/zoom).

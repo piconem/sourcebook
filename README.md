@@ -6,6 +6,8 @@ It never executes code: it edits content and persists it as plain Markdown/sourc
 
 ## Requirements
 - Node.js ≥ 22 and pnpm (`corepack enable`)
+- Nothing else: document conversion for the assistant runs in Node; the only native part (`@napi-rs/canvas`, used to
+  render PDF pages and figures) is a prebuilt binary that `pnpm install` downloads for your platform
 
 ## Development
 ```bash
@@ -34,7 +36,8 @@ packages/mcp      MCP server for LLM assistants (tools, resources, prompts; stdi
       project.json              name, description, createdAt, createdFrom?
       notebook.json             ordered index: id, title, parentId, order, folder
       references/               project input files of any type, user-defined folders (read-only in the app)
-        .mcp/<file path>/       generated for the assistant: content.md, manifest.json, pages/p001.webp…
+        .mcp/<file path>/       generated for the assistant (hidden, rebuilt automatically):
+                                content.md, manifest.json, pages/p001.webp… (page images), figures/p003-1.webp… (PDF figures)
       bibliography.json         citable sources (key, type, name, authors, year, venue, title, DOI, link, BibTeX…)
       blocks/
         001-introduction/
@@ -93,7 +96,7 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | PATCH | `…/comments/:commentId` | `{ anchor }` re-attach (lines or quote), or `{ anchor: null }` for a general comment |
 | POST | `…/comments/:commentId/replies` | `{ text, author? }` |
 | DELETE | `…/comments/:commentId` · `…/comments/:commentId/replies/:replyId` | |
-| GET | `…/references` | tree of `references/` |
+| GET | `…/references` | tree of `references/`; each file has `mcp: { status, kind, unit?, parts?, pageImages?, figures?, imageOnlyParts?, error? }` (see below) and documents still to convert are queued |
 | GET | `…/references/file/*` | a reference, inline (`?download=1` to download) |
 | POST | `…/references/upload?dir=…` | multipart, one or more `file` fields (≤ 100 MB each) |
 | POST | `…/references/folders` | `{ path }` |
@@ -101,11 +104,12 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | DELETE | `…/references?path=…` | file or folder (recursive) |
 | POST | `…/references/zip` | `{ paths, base? }` → streamed ZIP (folders included recursively) |
 | POST | `…/references/delete` | `{ paths }` → `{ deleted }` — attachments of deleted files are removed |
-| POST | `…/references/mcp/convert` | `{ paths, force? }` → `{ results: [{ path, status, parts?, pageImages?, imageOnlyParts?, error? }] }` — converts documents (folders expanded) to Markdown for the assistant now (otherwise automatic) |
+| POST | `…/references/mcp/convert` | `{ paths, force? }` → `{ results: [{ path, status, kind, unit?, parts?, pageImages?, figures?, imageOnlyParts?, error? }] }` — converts documents (folders expanded) to Markdown for the assistant now (otherwise automatic) |
 | GET / DELETE | `…/references/mcp?path=…` | converted content `{ info, manifest, markdown }` · delete the generated files |
 | POST | `…/references/mcp/pages` | `{ path, pages: "all" \| [n…] }` — render PDF page images |
 | GET | `…/references/mcp/page?path=…&n=…` | a rendered page image (WebP) |
 | GET | `…/references/mcp/figure?path=…&id=p3-1` | a figure cut out of a PDF page (WebP) |
+| GET | `…/references/mcp/image?path=…` | an image reference scaled for the assistant (longest side ≤ 1568 px, WebP) |
 | GET | `…/references/images` | `{ images: [{ path, name, size }], documents: [{ path, name, figures }] }` — image files and document figures usable in image sub-blocks |
 | POST | `…/blocks/:id/assets/from-reference` | `{ path, figure?, attachTo? }` → `{ path, url, alt, caption }` — copies an image reference or a figure into the block's assets (attaching the source file to sub-block `attachTo`) |
 | POST | `…/blocks/:id/images/from-reference` | `{ path, figure?, caption?, alt?, title?, position? }` — a new image sub-block from an image reference or a figure, with the source attached |
@@ -165,13 +169,32 @@ Environment: `SOURCEBOOK_URL` (stdio, default `http://127.0.0.1:4000`), `SOURCEB
 reference files prepares a ready-to-paste request (brainstorming, critique, build/fill, improve/rewrite, comment, or
 your own prompt) that points the assistant at exactly that element.
 
-**Reference documents**: files the assistant cannot read as they are — PDF, Word (`.docx`, `.doc`), PowerPoint
-(`.pptx`), Excel (`.xlsx`), OpenDocument (`.odt/.odp/.ods`), RTF, EPUB, HTML, Jupyter, email (`.eml/.msg`) and ZIP —
-are converted to Markdown automatically (in Node, locally), split into pages/slides/sheets. PDF pages without usable
-text (scans, figures, diagrams) are also rendered as images, which the assistant reads with `read_reference_pages`
-and can transcribe back into the text; figures of PDF pages (images, charts, diagrams) are cut out with their captions
-(`read_reference_figures`). Conversions run in a background worker thread. The References view shows an "Assistant" status per file and lets you inspect,
-reconvert or delete the generated content.
+### Reference files and the assistant
+Every file in References is made readable by the assistant:
+- **Text** (Markdown, code, CSV, JSON, BibTeX, LaTeX, SVG…) is read as it is; **images** (PNG, JPG, GIF, WebP) are
+  passed as images (scaled down when large).
+- **Documents** — PDF, Word (`.docx`, `.doc`), PowerPoint (`.pptx`), Excel (`.xlsx`), OpenDocument (`.odt/.odp/.ods`),
+  RTF, EPUB, HTML, Jupyter, email (`.eml/.msg`) and ZIP — are **converted to Markdown automatically**, locally in Node
+  (no Python, LibreOffice or online service), split into pages/slides/sheets/chapters. Conversion starts on upload,
+  when a file copied into the folder by hand is first listed, and again when a file changes; it runs in a background
+  worker thread, so you can keep working, and the view updates when it finishes.
+- **PDF pages** are analysed: pages without usable text (scans, drawings, unreadable text layers) are also rendered as
+  images; **figures** of text pages (images, charts, diagrams, with their captions) are cut out as images. The
+  assistant looks at them with `read_reference_pages` / `read_reference_figures` and can save what it read on a
+  scanned page with `save_reference_transcription`.
+- Old binary formats (`.ppt`, `.xls`) and other unknown formats are not readable.
+
+In **References**, the **Assistant ready** column (a badge on cards in the grid) says **Yes**, **No** or
+**Converting** (details in the tooltip); the header counts "N of M files readable by the assistant" and can show only
+the files not readable yet. For converted documents a **folder icon** opens the conversion details: the Markdown
+(rendered or source), the figures, the pages (image next to its text), exactly what the assistant receives (with a
+token estimate) and technical details (pages analysis, warnings, hash). From there, or from the context menu, a
+document can be converted again, its page images rendered, or its generated files deleted.
+
+**Images from references in image sub-blocks**: "From references…" in an image sub-block picks an image file or a
+figure of a document (searchable by caption); "Insert into a section…" (figure details, image files) adds it as a new
+image sub-block. The image is copied into the section, its caption defaults to the figure's, and the source file is
+attached to the sub-block (📎).
 
 **References** you can use in the conversation (the 🔗 buttons in the editor copy them):
 `§2.1` section · `§2.1#3` 3rd sub-block of §2.1 · `§2.1#3:L10-14` its source lines · `§2.1#3 "quoted text"` ·
