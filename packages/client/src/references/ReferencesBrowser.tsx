@@ -1,5 +1,5 @@
 import type { ReferenceNode } from "@sourcebook/shared";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { api, referenceUrl } from "../api/client";
 import { Dialog } from "../components/Dialog";
@@ -11,6 +11,11 @@ import { downloadReference, formatSize } from "./ReferenceViewerDialog";
 import { flattenFiles, referencesKey, useReferences } from "./ReferencesContext";
 import { extOf } from "./viewers/basic";
 import { viewerFor } from "./viewers";
+import { McpBadge } from "./McpBadge";
+import { McpInspectorDialog } from "./McpInspectorDialog";
+import { InsertImageDialog } from "./InsertImageDialog";
+import type { PickedImage } from "./ReferenceImagePicker";
+import { IMAGE_ASSET_EXT } from "@sourcebook/shared";
 
 type Layout = "grid" | "list";
 type SortKey = "name" | "size" | "modified";
@@ -112,12 +117,28 @@ export function ReferencesBrowser() {
     store.set(LAYOUT_KEY, l);
   };
   const refresh = () => qc.invalidateQueries({ queryKey: referencesKey });
+  const refreshNotebook = () => {
+    void qc.invalidateQueries({ queryKey: ["block"] });
+    void qc.invalidateQueries({ queryKey: ["reference-usages"] });
+  };
 
   const searching = query.trim() !== "";
+  // Files the assistant cannot read yet (still converting, failed, unsupported), across all folders.
+  const notReady = (n: ReferenceNode) => n.kind === "file" && !!n.mcp && n.mcp.status !== "native" && n.mcp.status !== "ready";
+  const allFiles = useMemo(() => allNodes(tree).filter((n) => n.kind === "file"), [tree]);
+  const readable = allFiles.filter((n) => n.mcp && !notReady(n)).length;
+  const converting = allFiles.filter((n) => ["pending", "converting", "stale"].includes(n.mcp?.status ?? "")).length;
+  const [onlyNotReady, setOnlyNotReady] = useState(false);
+  const flat = searching || onlyNotReady;
+  const [inspecting, setInspecting] = useState<string | null>(null);
+  const [inserting, setInserting] = useState<PickedImage | null>(null);
+  const isImageFile = (n: ReferenceNode) => n.kind === "file" && IMAGE_ASSET_EXT.test(n.name);
   const items = useMemo(() => {
     const source = searching
-      ? allNodes(tree).filter((n) => n.name.toLowerCase().includes(query.trim().toLowerCase()))
-      : (current?.children ?? []);
+      ? allNodes(tree).filter((n) => n.name.toLowerCase().includes(query.trim().toLowerCase()) && (!onlyNotReady || notReady(n)))
+      : onlyNotReady
+        ? allFiles.filter(notReady)
+        : (current?.children ?? []);
     const dirFactor = (n: ReferenceNode) => (n.kind === "dir" ? 0 : 1);
     const cmp = (a: ReferenceNode, b: ReferenceNode) => {
       const byKind = dirFactor(a) - dirFactor(b);
@@ -131,7 +152,7 @@ export function ReferencesBrowser() {
       return sort.asc ? v : -v;
     };
     return [...source].sort(cmp);
-  }, [tree, current, searching, query, sort]);
+  }, [tree, current, searching, query, sort, onlyNotReady, allFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep only visible items selected (navigation, search, deletions elsewhere).
   useEffect(() => {
@@ -177,13 +198,33 @@ export function ReferencesBrowser() {
     if (nodes.length === 1 && nodes[0].kind === "file") return downloadReference(nodes[0].path);
     setStatus({ text: `Preparing a ZIP of ${plural(nodes.length, "item")}…` });
     try {
-      const { blob, name } = await api.zipReferences(nodes.map((n) => n.path), searching ? "" : dir);
+      const { blob, name } = await api.zipReferences(nodes.map((n) => n.path), flat ? "" : dir);
       saveBlob(blob, name);
       setStatus({ text: `Downloaded ${name} (${formatSize(blob.size)})` });
     } catch (e) {
       setStatus({ text: (e as Error).message, error: true });
     }
   };
+
+  /** Converts files (or folders) to Markdown for the assistant now. */
+  const convertNow = async (nodes: ReferenceNode[], force: boolean) => {
+    setMenu(null);
+    setStatus({ text: `Converting ${plural(nodes.length, "item")} for the assistant…` });
+    try {
+      const { results } = await api.convertReferences(nodes.map((n) => n.path), force);
+      const failed = results.filter((r) => r.status === "failed");
+      setStatus({
+        text: results.length
+          ? `Converted ${plural(results.length - failed.length, "file")} to Markdown${failed.length ? `; ${failed.length} failed (${failed.map((r) => r.path.split("/").pop()).join(", ")})` : ""}.`
+          : "Nothing to convert: these files are read by the assistant as they are.",
+        error: failed.length > 0,
+      });
+      await refresh();
+    } catch (e) {
+      setStatus({ text: (e as Error).message, error: true });
+    }
+  };
+  const convertible = (nodes: ReferenceNode[]) => nodes.some((n) => n.kind === "dir" || n.mcp?.kind === "markdown");
 
   const openNode = (n: ReferenceNode) => {
     if (n.kind === "dir") {
@@ -218,11 +259,13 @@ export function ReferencesBrowser() {
         const old = pending.node.path;
         const { path } = await api.renameReference(old, value);
         await refresh();
+        refreshNotebook(); // associations and links in the text follow the rename
         if (dir === old || dir.startsWith(`${old}/`)) setDir(path + dir.slice(old.length));
         setSelected(path);
       } else {
         const { deleted } = await api.deleteReferences(pending.nodes.map((n) => n.path));
         await refresh();
+        refreshNotebook();
         setSelected(null);
         setStatus({ text: `Deleted ${deleted.length === 1 ? deleted[0].split("/").pop() : plural(deleted.length, "item")}` });
       }
@@ -418,6 +461,21 @@ export function ReferencesBrowser() {
         </div>
       </header>
 
+      {allFiles.length > 0 && (
+        <div className="mcp-bar" onClick={(e) => e.stopPropagation()}>
+          <span className={`mcp-bar-count${readable === allFiles.length ? " all" : ""}`} title="Files the assistant can read through MCP: text and images as they are, documents converted to Markdown">
+            <span className="mcp-dot" aria-hidden="true" /> {readable} of {plural(allFiles.length, "file")} readable by the assistant
+          </span>
+          {converting > 0 && <span className="muted small">· {converting} being converted…</span>}
+          {(readable < allFiles.length || onlyNotReady) && (
+            <label className="check small">
+              <input type="checkbox" checked={onlyNotReady} onChange={(e) => setOnlyNotReady(e.target.checked)} />
+              Show only files not readable yet
+            </label>
+          )}
+        </div>
+      )}
+
       <div className="ref-selection-bar" onClick={(e) => e.stopPropagation()}>
         {selectedNodes.length > 1 ? (
           <>
@@ -426,6 +484,7 @@ export function ReferencesBrowser() {
             </button>
             <span className="ref-selection-name">{selectedNodes.length} selected</span>
             <button onClick={() => download(selectedNodes)}>Download ZIP</button>
+            {convertible(selectedNodes) && <button onClick={() => convertNow(selectedNodes, false)}>Convert for the assistant</button>}
             <button className="danger" onClick={() => ask({ kind: "delete", nodes: selectedNodes })}>
               Delete
             </button>
@@ -448,6 +507,8 @@ export function ReferencesBrowser() {
               <AskAiButton className="ask-ai-inline" label="Ask AI" target={() => ({ kind: "reference", path: selectedNode.path })} />
             )}
             <button onClick={() => download([selectedNode])}>{selectedNode.kind === "dir" ? "Download ZIP" : "Download"}</button>
+            {selectedNode.mcp?.kind === "markdown" && <button onClick={() => setInspecting(selectedNode.path)}>Assistant content</button>}
+            {isImageFile(selectedNode) && <button onClick={() => setInserting({ path: selectedNode.path, caption: "" })}>Insert into a section…</button>}
             <button onClick={() => ask({ kind: "rename", node: selectedNode })}>Rename</button>
             <button className="danger" onClick={() => ask({ kind: "delete", nodes: [selectedNode] })}>
               Delete
@@ -466,8 +527,8 @@ export function ReferencesBrowser() {
         <p className="muted">Loading…</p>
       ) : items.length === 0 ? (
         <div className="ref-empty-state">
-          <div className="ref-empty-icon" aria-hidden="true">{searching ? "🔍" : "📂"}</div>
-          <p>{searching ? "Nothing matches your search." : "This folder is empty."}</p>
+          <div className="ref-empty-icon" aria-hidden="true">{onlyNotReady && !searching ? "✅" : searching ? "🔍" : "📂"}</div>
+          <p>{onlyNotReady && !searching ? "Every file is readable by the assistant." : searching ? "Nothing matches your search." : "This folder is empty."}</p>
           {!searching && <p className="muted">Drop files here, or use Upload. Specs, papers, datasets, diagrams…</p>}
         </div>
       ) : layout === "grid" ? (
@@ -494,10 +555,15 @@ export function ReferencesBrowser() {
                 {menuButton(n)}
               </div>
               <span className="ref-card-meta muted">
-                {searching && parentOf(n.path) ? `${parentOf(n.path)}/ · ` : ""}
+                {flat && parentOf(n.path) ? `${parentOf(n.path)}/ · ` : ""}
                 {n.kind === "dir" ? `${n.children?.length ?? 0} item${n.children?.length === 1 ? "" : "s"}` : formatSize(n.size)}
                 {n.kind === "file" && !viewerFor(n.name) ? " · download only" : ""}
               </span>
+              {n.kind === "file" && (
+                <span className="ref-card-mcp">
+                  <McpBadge info={n.mcp} onInspect={() => setInspecting(n.path)} />
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -519,6 +585,7 @@ export function ReferencesBrowser() {
               </th>
               {sortHeader("name", "Name")}
               <th>Type</th>
+              <th title="Whether the assistant can read the file through MCP (as it is, or converted to Markdown)">Assistant ready</th>
               {sortHeader("size", "Size")}
               {sortHeader("modified", "Modified")}
               <th aria-label="Actions" />
@@ -535,9 +602,10 @@ export function ReferencesBrowser() {
                 <td className="check-col">{checkbox(n)}</td>
                 <td className="ref-list-name">
                   <span aria-hidden="true">{iconOf(n)}</span> {n.name}
-                  {searching && parentOf(n.path) && <span className="muted small"> — {parentOf(n.path)}/</span>}
+                  {flat && parentOf(n.path) && <span className="muted small"> — {parentOf(n.path)}/</span>}
                 </td>
                 <td className="muted">{typeLabel(n)}</td>
+                <td>{n.kind === "file" && <McpBadge info={n.mcp} onInspect={() => setInspecting(n.path)} />}</td>
                 <td className="muted num">{n.kind === "dir" ? `${n.children?.length ?? 0} items` : formatSize(n.size)}</td>
                 <td className="muted">{formatDate(n.modified)}</td>
                 <td>{menuButton(n)}</td>
@@ -561,12 +629,22 @@ export function ReferencesBrowser() {
         </div>
       )}
 
+      <McpInspectorDialog path={inspecting} onClose={() => setInspecting(null)} />
+      {inserting && (
+        <InsertImageDialog
+          source={inserting}
+          preview={referenceUrl(inserting.path)}
+          onClose={() => setInserting(null)}
+          onDone={(text) => setStatus({ text })}
+        />
+      )}
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
           {menuTargets.length > 1 ? (
             <>
               <div className="context-menu-title">{menuTargets.length} selected</div>
               <button onClick={() => download(menuTargets)}>Download as ZIP</button>
+              {convertible(menuTargets) && <button onClick={() => convertNow(menuTargets, false)}>Convert for the assistant</button>}
               <hr />
               <button className="danger" onClick={() => ask({ kind: "delete", nodes: menuTargets })}>
                 Delete {menuTargets.length} items…
@@ -577,6 +655,15 @@ export function ReferencesBrowser() {
               <button onClick={() => (setMenu(null), openNode(menu.node))}>{menu.node.kind === "dir" ? "Open folder" : "Open"}</button>
               <button onClick={() => download([menu.node])}>{menu.node.kind === "dir" ? "Download as ZIP" : "Download"}</button>
               <button onClick={() => ask({ kind: "rename", node: menu.node })}>Rename…</button>
+              {isImageFile(menu.node) && <button onClick={() => (setMenu(null), setInserting({ path: menu.node.path, caption: "" }))}>Insert into a section…</button>}
+              {menu.node.mcp?.kind === "markdown" && (
+                <>
+                  <hr />
+                  <button onClick={() => (setMenu(null), setInspecting(menu.node.path))}>Assistant content…</button>
+                  <button onClick={() => convertNow([menu.node], true)}>Convert again for the assistant</button>
+                </>
+              )}
+              {menu.node.kind === "dir" && <button onClick={() => convertNow([menu.node], false)}>Convert folder for the assistant</button>}
               <hr />
               <button className="danger" onClick={() => ask({ kind: "delete", nodes: [menu.node] })}>
                 Delete…
@@ -634,9 +721,33 @@ export function ReferencesBrowser() {
             <strong>references/{deleting?.[0]?.path}</strong> will be permanently deleted.
           </p>
         )}
-        <p className="muted small">Links from Markdown sub-blocks to deleted files will stop working.</p>
+        {deleting && <ReferenceUsagesNote paths={deleting.map((n) => n.path)} />}
         {dialogError && <p className="render-error">{dialogError}</p>}
       </Dialog>
     </div>
+  );
+}
+
+/** Where the files about to be deleted are used (associations are removed; links in the text break). */
+function ReferenceUsagesNote({ paths }: { paths: string[] }) {
+  const usages = useQuery({
+    queryKey: ["reference-usages", ...paths],
+    queryFn: async () => (await Promise.all(paths.map((p) => api.getReferenceUsages(p)))).flat(),
+  });
+  const list = usages.data ?? [];
+  if (usages.isLoading) return <p className="muted small">Checking where they are used…</p>;
+  if (!list.length) return <p className="muted small">Not linked or attached anywhere in the document.</p>;
+  return (
+    <>
+      <p className="small">Used in the document:</p>
+      <ul className="file-list small">
+        {list.slice(0, 12).map((u, i) => (
+          <li key={i}>
+            {u.ref} {u.title} — {u.path.split("/").pop()} {u.kind === "text" ? "linked in the text (the link will stop working)" : "attached (removed)"}
+          </li>
+        ))}
+        {list.length > 12 && <li>… and {list.length - 12} more</li>}
+      </ul>
+    </>
   );
 }

@@ -10,6 +10,9 @@ import { registry } from "../subblocks";
 import type { CommentBridge } from "../comments/bridge";
 import { CopyReferenceButton } from "./CopyReferenceButton";
 import { AskAiButton } from "../ai/AskAiButton";
+import { CitationsButton } from "../bibliography/CitationsButton";
+import { citedKeys, linkedReferences } from "@sourcebook/shared";
+import { AttachmentsButton } from "../references/AttachmentsButton";
 import { ObjectiveField } from "./ObjectiveField";
 import { useDebouncedSaver } from "./useDebouncedSaver";
 
@@ -205,6 +208,18 @@ export function SubBlockFrame(props: {
         </span>
         <div className="subblock-actions">
         <AskAiButton target={() => ({ kind: "subblock", ref: props.refLabel ?? subBlock.id, id: subBlock.id, type: subBlock.type, title: subBlock.title })} />
+        <CitationsButton
+          blockId={blockId}
+          subBlockId={subBlock.id}
+          citations={subBlock.citations}
+          inText={subBlock.type === "markdown" ? citedKeys(String((subBlock.content as { markdown?: string }).markdown ?? "")) : undefined}
+        />
+        <AttachmentsButton
+          blockId={blockId}
+          subBlockId={subBlock.id}
+          paths={subBlock.references}
+          inText={subBlock.type === "markdown" ? linkedReferences(String((subBlock.content as { markdown?: string }).markdown ?? "")) : undefined}
+        />
         <CopyReferenceButton text={`${props.refLabel ? `${props.refLabel} ` : ""}${notebookUri(`subblocks/${subBlock.id}`)}`} label={props.refLabel} />
         <button
           className={`icon comment-toggle${(subBlock.commentCount ?? 0) > 0 ? " has-comments" : ""}${props.commentsOpen ? " active" : ""}`}

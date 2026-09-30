@@ -17,7 +17,11 @@ export const codeBlock = CodeBlockLowlight.configure({ lowlight, defaultLanguage
  * injectable so the React editor can add its language-picker node view.
  */
 export const markdownExtensions = (codeBlockExtension: AnyExtension = codeBlock): Extensions => [
-  StarterKit.configure({ link: { openOnClick: false }, codeBlock: false }),
+  StarterKit.configure({
+    // bib:key links are citations of bibliography entries.
+    link: { openOnClick: false, isAllowedUri: (url, ctx) => url.startsWith("bib:") || ctx.defaultValidate(url) },
+    codeBlock: false,
+  }),
   codeBlockExtension,
   Image,
   TableKit,

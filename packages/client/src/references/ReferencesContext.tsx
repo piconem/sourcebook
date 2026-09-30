@@ -13,7 +13,9 @@ interface ReferencesValue {
   open(path: string): void;
 }
 
-const Ctx = createContext<ReferencesValue | null>(null);
+/** The references, or null outside a project editor. */
+export const ReferencesContext = createContext<ReferencesValue | null>(null);
+const Ctx = ReferencesContext;
 
 export function flattenFiles(node: ReferenceNode | undefined): ReferenceNode[] {
   if (!node) return [];

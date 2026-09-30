@@ -1,6 +1,9 @@
 import type { ImageContent } from "@sourcebook/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, blockFileUrl } from "../../api/client";
+import { keys } from "../../api/queries";
+import { ReferenceImagePicker, type PickedImage } from "../../references/ReferenceImagePicker";
 import { Dialog } from "../../components/Dialog";
 import type { SubBlockProps } from "../types";
 
@@ -12,6 +15,8 @@ export function ImageEditor({ blockId, subBlock, onChange, saveNow }: SubBlockPr
   /** Previous file after a replacement, pending the user's decision. */
   const [replaced, setReplaced] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const qc = useQueryClient();
 
   const update = (patch: Partial<ImageContent>) => {
     const next = { ...content, ...patch };
@@ -29,6 +34,25 @@ export function ImageEditor({ blockId, subBlock, onChange, saveNow }: SubBlockPr
       update({ src: path, alt: content.alt || file.name.replace(/\.[^.]+$/, "") });
       setNotice(null);
       if (previous && previous !== path) setReplaced(previous);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Copies an image reference or a document figure into the section; the source file is attached (📎). */
+  const fromReference = async (img: PickedImage) => {
+    setPicking(false);
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.assetFromReference(blockId, { path: img.path, ...(img.figure ? { figure: img.figure } : {}) }, subBlock.id);
+      const previous = content.src;
+      update({ src: r.path, alt: r.alt, caption: r.caption || content.caption });
+      setNotice(`Copied from references/${img.path}${img.figure ? ` (figure ${img.figure})` : ""} — the source is attached to this sub-block (📎).`);
+      if (previous && previous !== r.path) setReplaced(previous);
+      void qc.invalidateQueries({ queryKey: keys.block(blockId) });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -54,10 +78,16 @@ export function ImageEditor({ blockId, subBlock, onChange, saveNow }: SubBlockPr
             {content.caption && <figcaption>{content.caption}</figcaption>}
           </figure>
         ) : (
-          <span>{busy ? "Uploading…" : "Drop an image here or click to choose a file"}</span>
+          <span>{busy ? "Adding the image…" : "Drop an image here or click to choose a file — or take one from the references"}</span>
         )}
         <input type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files?.[0])} />
       </label>
+      <div className="image-actions">
+        <button type="button" disabled={busy} onClick={() => setPicking(true)} title="An image file of the references, or a figure cut out of a reference document (PDF)">
+          🖼 {content.src ? "Replace from references…" : "From references…"}
+        </button>
+      </div>
+      <ReferenceImagePicker open={picking} onClose={() => setPicking(false)} onPick={fromReference} />
       {error && <p className="render-error">{error}</p>}
       {notice && <p className="muted small">{notice}</p>}
       <Dialog

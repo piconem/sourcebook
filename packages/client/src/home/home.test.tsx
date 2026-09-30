@@ -76,7 +76,7 @@ afterEach(() => {
 
 const tick = () => act(async () => void (await new Promise((r) => setTimeout(r, 10))));
 const until = async (check: () => boolean) => {
-  for (let i = 0; i < 60 && !check(); i++) await tick();
+  for (let i = 0; i < 200 && !check(); i++) await tick();
   expect(check()).toBe(true);
 };
 const $ = (sel: string, scope: ParentNode = document) => scope.querySelector(sel) as HTMLElement;

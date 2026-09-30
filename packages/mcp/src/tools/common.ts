@@ -23,8 +23,14 @@ export const refParam = (what: string) =>
 
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {
-    const details = e.details as { errors?: string[]; currentRev?: number } | undefined;
-    const extra = details?.errors?.length ? `\n- ${details.errors.join("\n- ")}` : details?.currentRev !== undefined ? ` (current rev ${details.currentRev})` : "";
+    const details = e.details as { errors?: string[]; currentRev?: number; usages?: { ref: string; kind: string; title: string }[] } | undefined;
+    const extra = details?.errors?.length
+      ? `\n- ${details.errors.join("\n- ")}`
+      : details?.usages?.length
+        ? `\n${details.usages.map((u) => `- ${u.ref} "${u.title}" (${u.kind === "text" ? "cited in text" : `associated ${u.kind}`})`).join("\n")}`
+        : details?.currentRev !== undefined
+          ? ` (current rev ${details.currentRev})`
+          : "";
     return `Sourcebook error${e.status ? ` ${e.status}` : ""}: ${e.message}${extra}`;
   }
   if (e instanceof RefError) return e.message;
@@ -36,6 +42,17 @@ export function run<A>(fn: (args: A) => Promise<string>) {
   return async (args: A): Promise<CallToolResult> => {
     try {
       return { content: [{ type: "text", text: await fn(args) }] };
+    } catch (e) {
+      return { isError: true, content: [{ type: "text", text: errorText(e) }] };
+    }
+  };
+}
+
+/** Like run(), for tools that return several content items (text and images). */
+export function runContent<A>(fn: (args: A) => Promise<CallToolResult["content"]>) {
+  return async (args: A): Promise<CallToolResult> => {
+    try {
+      return { content: await fn(args) };
     } catch (e) {
       return { isError: true, content: [{ type: "text", text: errorText(e) }] };
     }

@@ -1,6 +1,8 @@
 import { strFromU8, strToU8, unzipSync } from "fflate";
 import { posix } from "node:path";
 import {
+  BibliographyFileSchema,
+  citedKeys,
   BlockMetaSchema,
   NotebookIndexSchema,
   ProjectMetaSchema,
@@ -42,7 +44,7 @@ export type ArchiveValidation =
   | { ok: false; errors: string[]; warnings: string[] };
 
 const IGNORED = [/^__MACOSX\//, /(^|\/)\.DS_Store$/, /(^|\/)Thumbs\.db$/, /(^|\/)desktop\.ini$/i];
-const TOP_LEVEL = new Set(["notebook.json", "project.json", MANIFEST_FILE]);
+const TOP_LEVEL = new Set(["notebook.json", "project.json", "bibliography.json", MANIFEST_FILE]);
 const TOP_DIRS = new Set(["blocks", "references"]);
 
 /** A safe relative archive path: no absolute paths, drive letters, backslashes, "..", empty or NUL segments. */
@@ -258,6 +260,41 @@ export function validateTemplateArchive(
       }
     }
   }
+
+  // Bibliography: valid file, unique keys; citations of unknown keys are reported (text stays as it is).
+  const bibKeys = new Set<string>();
+  if (files.has("bibliography.json")) {
+    try {
+      const parsed = BibliographyFileSchema.safeParse(parseJson(files.get("bibliography.json")));
+      if (!parsed.success) errors.push("bibliography.json is invalid (each entry needs a valid key, type and name).");
+      else
+        for (const e of parsed.data.entries) {
+          if (bibKeys.has(e.key)) errors.push(`bibliography.json: the key "${e.key}" appears twice.`);
+          bibKeys.add(e.key);
+        }
+    } catch {
+      errors.push("bibliography.json is not valid JSON.");
+    }
+  }
+  const unknownCited = new Set<string>();
+  const missingAttached = new Set<string>();
+  for (const [name, bytes] of files) {
+    if (!/^blocks\/[^/]+\//.test(name)) continue;
+    let keys: string[] = [];
+    if (name.endsWith("/block.json")) {
+      try {
+        const b = JSON.parse(strFromU8(bytes)) as { citations?: string[]; references?: string[]; subBlocks?: { citations?: string[]; references?: string[] }[] };
+        keys = [...(b.citations ?? []), ...(b.subBlocks ?? []).flatMap((s) => s.citations ?? [])];
+        for (const p of [...(b.references ?? []), ...(b.subBlocks ?? []).flatMap((s) => s.references ?? [])])
+          if (!files.has(`references/${p}`)) missingAttached.add(p);
+      } catch {
+        // reported above
+      }
+    } else if (name.includes("/subblocks/") && !name.endsWith(".png")) keys = citedKeys(strFromU8(bytes));
+    for (const k of keys) if (!bibKeys.has(k)) unknownCited.add(k);
+  }
+  if (missingAttached.size) warnings.push(`Associates reference files that are not included: ${[...missingAttached].join(", ")}.`);
+  if (unknownCited.size) warnings.push(`Cites bibliography entries that are not included: ${[...unknownCited].join(", ")}.`);
 
   // Block folders not listed in notebook.json are dropped.
   for (const name of [...files.keys()]) {

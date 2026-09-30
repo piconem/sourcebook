@@ -1,11 +1,9 @@
-import type { ProjectSummary, ReferenceNode } from "@sourcebook/shared";
+import type { BibEntry, ProjectSummary } from "@sourcebook/shared";
 import { z } from "zod";
 import { sourceText } from "../notebook.js";
 import { projectLabel } from "../refs.js";
 import { READ, projectParam, refParam, run, type ToolContext } from "./common.js";
 
-const TEXT_EXT = /\.(txt|log|md|markdown|csv|tsv|json|ya?ml|toml|xml|ini|cfg|conf|env|tex|sty|cls|bib|bst|mmd|mermaid|excalidraw|html?|css|scss|js|jsx|ts|tsx|py|java|c|h|cpp|hpp|cs|go|rs|rb|php|kt|swift|sql|sh|r|lua|pl|graphql|diff|rst|adoc)$/i;
-const MAX_TEXT = 200_000;
 
 export function registerReadTools({ server, api, open }: ToolContext) {
   server.registerTool(
@@ -123,51 +121,12 @@ export function registerReadTools({ server, api, open }: ToolContext) {
           });
         }
       }
+      for (const e of await api.json<BibEntry[]>("GET", `${nb.base}/bibliography`)) {
+        const field = (["name", "title", "authors", "venue", "description", "key"] as const).find((f) => e[f] && re.test(e[f]!));
+        if (field) hits.push(`bib:${e.key} (bibliography ${field}) ${e.name}${e.title ? ` — ${e.title}` : ""}`);
+      }
       if (!hits.length) return `No matches for ${JSON.stringify(query)} in ${projectLabel(nb.project)}.`;
       return `${hits.length} match(es)${hits.length > limit ? `, first ${limit}` : ""}:\n${hits.slice(0, limit).join("\n")}`;
-    }),
-  );
-
-  server.registerTool(
-    "list_references",
-    {
-      title: "List reference files",
-      description: "Lists the project's reference files (specs, papers, data… in references/) as a folder tree with sizes.",
-      inputSchema: { project: projectParam },
-      annotations: READ,
-    },
-    run(async ({ project }) => {
-      const nb = await open(project);
-      const tree = await api.json<ReferenceNode>("GET", `${nb.base}/references`);
-      const out: string[] = [];
-      const walk = (n: ReferenceNode, depth: number) => {
-        for (const c of n.children ?? []) {
-          out.push(`${"  ".repeat(depth)}${c.kind === "dir" ? `${c.name}/` : `${c.name} (${c.size ?? 0} bytes) — path "${c.path}"`}`);
-          if (c.kind === "dir") walk(c, depth + 1);
-        }
-      };
-      walk(tree, 0);
-      return out.length ? `references/ of ${projectLabel(nb.project)}:\n${out.join("\n")}` : "No reference files.";
-    }),
-  );
-
-  server.registerTool(
-    "read_reference",
-    {
-      title: "Read a reference file",
-      description: "Reads a text-based reference file (Markdown, code, JSON, CSV, BibTeX, LaTeX…) by its path from list_references. Binary files (PDF, images, Office) cannot be read as text.",
-      inputSchema: { project: projectParam, path: z.string().min(1).describe('Path inside references/, e.g. "papers/spec.md"') },
-      annotations: READ,
-    },
-    run(async ({ project, path }) => {
-      const nb = await open(project);
-      const clean = path.replace(/^\/?references\//, "");
-      if (!TEXT_EXT.test(clean)) {
-        return `references/${clean} is not a text format; the assistant cannot read its content (the user can open it in Sourcebook's References view).`;
-      }
-      const url = `${nb.base}/references/file/${clean.split("/").map(encodeURIComponent).join("/")}`;
-      const { text } = await api.text(url);
-      return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}\n\n[truncated: first ${MAX_TEXT} of ${text.length} characters]` : text;
     }),
   );
 

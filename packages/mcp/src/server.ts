@@ -4,6 +4,9 @@ import type { SourcebookApi } from "./api.js";
 import { registerPrompts } from "./prompts.js";
 import { registerResources } from "./resources.js";
 import { openProject, type ToolContext } from "./tools/common.js";
+import { registerBibliographyReadTools, registerBibliographyWriteTools } from "./tools/bibliography.js";
+import { registerAttachmentTools } from "./tools/attachments.js";
+import { registerReferenceFigureTool, registerReferenceReadTools, registerReferenceWriteTools } from "./tools/references.js";
 import { registerCommentTools } from "./tools/comments.js";
 import { registerReadTools } from "./tools/read.js";
 import { registerWriteTools } from "./tools/write.js";
@@ -25,7 +28,10 @@ How to work:
 - Read before writing: read_subblock shows numbered source lines and the revision (rev). Prefer edit_subblock_text for targeted changes; pass expectedRev when the user may be editing the same sub-block (a conflict error means: re-read and retry).
 - The user sees your changes live in Sourcebook. Explain what you changed with references. Ask before deleting anything.
 - Comments you write are signed as the assistant. When asked to review, comment on precise lines/quotes rather than rewriting the user's text.
-- Templates are edited like projects with project "templates/<id>"; create_project can start from a template.`;
+- Templates are edited like projects with project "templates/<id>"; create_project can start from a template.
+- Each project has a bibliography (list_bibliography, read_bib_entry, add_bib_entry, import_bibtex…). Entries have a key (e.g. knuth1984). Cite an entry inside Markdown text as a link [Name](bib:key) — insert it with edit_subblock_text; associate an entry with a whole section or sub-block with cite / uncite. Never invent sources: add entries only from information the user gave or confirmed.
+- Reference files (list_references): read_reference returns text files as they are, images as images, and documents (PDF, Office, OpenDocument, EPUB, HTML, email, ZIP…) as Markdown converted by Sourcebook, split into pages/slides/sheets (pass parts for long documents). Pages that are scans, figures or diagrams are marked in the text: look at them with read_reference_pages; figures (images, charts, diagrams) of PDFs are cut out and listed on their page — see them with read_reference_figures. After reading one you may store its text with save_reference_transcription.
+- Reference files can be linked in Markdown text as [name](../../../references/<path, URL-encoded>) or associated with a whole section or sub-block with attach_reference / detach_reference.`;
 
 /** The Sourcebook MCP server (tools, resources, prompts) on top of a SourcebookApi. */
 export function createSourcebookMcpServer(api: SourcebookApi, opts: SourcebookMcpOptions = {}): McpServer {
@@ -38,9 +44,15 @@ export function createSourcebookMcpServer(api: SourcebookApi, opts: SourcebookMc
     open: openProject(api),
   };
   registerReadTools(ctx);
+  registerBibliographyReadTools(ctx);
+  registerReferenceReadTools(ctx);
+  registerReferenceFigureTool(ctx);
   if (!ctx.readOnly) {
     registerWriteTools(ctx);
     registerCommentTools(ctx);
+    registerBibliographyWriteTools(ctx);
+    registerAttachmentTools(ctx);
+    registerReferenceWriteTools(ctx);
   }
   registerResources(server, api);
   registerPrompts(server);

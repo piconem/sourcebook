@@ -1,4 +1,6 @@
 import {
+  citedKeys,
+  linkedReferences,
   outlineNumbers,
   withDepth,
   type Block,
@@ -61,6 +63,20 @@ export function withLineNumbers(text: string, from = 1, to = Number.POSITIVE_INF
     .filter(([n]) => n >= from && n <= to)
     .map(([n, l]) => `${String(n).padStart(width)} | ${l}`)
     .join("\n");
+}
+
+/** "papers/spec.pdf (associated), data.csv (linked in text)" for a sub-block. */
+function referenceSummary(sub: SubBlock): string {
+  const associated = sub.references ?? [];
+  const linked = sub.type === "markdown" ? linkedReferences(sourceText(sub) ?? "").filter((p) => !associated.includes(p)) : [];
+  return [...associated.map((p) => `${p} (associated)`), ...linked.map((p) => `${p} (linked in text)`)].join(", ");
+}
+
+/** "knuth84 (associated), tsx (cited in text)" for a sub-block. */
+function citationSummary(sub: SubBlock): string {
+  const associated = sub.citations ?? [];
+  const inText = citedKeys(sourceText(sub) ?? "").filter((k) => !associated.includes(k));
+  return [...associated.map((k) => `${k} (associated)`), ...inText.map((k) => `${k} (cited in text)`)].join(", ");
 }
 
 const lineCount = (text: string) => (text === "" ? 0 : text.replace(/\n$/, "").split("\n").length);
@@ -213,6 +229,8 @@ export class NotebookView {
       const block = await this.block(entry.id);
       lines.push(`${indent}${this.num(entry)} ${entry.title}  (id ${entry.id})`);
       if (block.objective) lines.push(`${indent}   objective: ${block.objective}`);
+      if (block.citations?.length) lines.push(`${indent}   📚 sources: ${block.citations.join(", ")}`);
+      if (block.references?.length) lines.push(`${indent}   📎 files: ${block.references.join(", ")}`);
       for (const [i, sub] of block.subBlocks.entries()) lines.push(`${indent}   ${this.subSummary(entry, sub, i + 1, opts.previews)}`);
     }
     return lines.join("\n");
@@ -224,6 +242,10 @@ export class NotebookView {
     if (sub.title) bits.push(`"${sub.title}"`);
     bits.push(text !== null ? `${lineCount(text)} line${lineCount(text) === 1 ? "" : "s"}` : describeNonText(sub));
     if (sub.commentCount) bits.push(`💬 ${sub.commentCount}`);
+    const cites = citationSummary(sub);
+    if (cites) bits.push(`📚 ${cites}`);
+    const files = referenceSummary(sub);
+    if (files) bits.push(`📎 ${files}`);
     bits.push(`rev ${sub.rev ?? 0}`, `id ${sub.id}`);
     let line = bits.join(" · ");
     if (sub.objective) line += `\n${" ".repeat(6)}objective: ${sub.objective}`;
@@ -241,6 +263,10 @@ export class NotebookView {
       `uri: ${this.subUri(sub)} · rev ${sub.rev ?? 0}${sub.type === "code" ? ` · language ${(sub.content as { language?: string }).language}` : ""}${sub.commentCount ? ` · ${sub.commentCount} comment thread(s) (list_comments)` : ""}`,
     ];
     if (sub.objective) header.push(`objective: ${sub.objective}`);
+    const cites = citationSummary(sub);
+    if (cites) header.push(`bibliography: ${cites}`);
+    const files = referenceSummary(sub);
+    if (files) header.push(`reference files: ${files}`);
     const text = sourceText(sub);
     if (text === null) return [...header, "", describeNonText(sub)].join("\n");
     const from = opts.lines?.first ?? 1;
@@ -255,6 +281,8 @@ export class NotebookView {
     const children = this.data.blocks.filter((b) => b.parentId === entry.id);
     const out = [`${this.sectionLabel(entry)} — uri: ${this.sectionUri(entry)}`];
     if (block.objective) out.push(`objective: ${block.objective}`);
+    if (block.citations?.length) out.push(`bibliography (whole section): ${block.citations.join(", ")}`);
+    if (block.references?.length) out.push(`reference files (whole section): ${block.references.join(", ")}`);
     if (children.length) out.push(`sub-sections: ${children.map((c) => `${this.num(c)} ${c.title}`).join(", ")}`);
     out.push(`${block.subBlocks.length} sub-block(s)`);
     for (const [i, sub] of block.subBlocks.entries()) out.push("", this.formatSubBlock(entry, sub, i + 1, { lineNumbers: opts.lineNumbers }));

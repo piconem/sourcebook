@@ -1,4 +1,4 @@
-import type { MarkdownContent, ReferenceNode } from "@sourcebook/shared";
+import type { BibEntry, MarkdownContent, ReferenceNode } from "@sourcebook/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TextRange } from "@sourcebook/shared";
 import { useCommentAnchoring, type AnchorAdapter } from "../../comments/useCommentAnchoring";
@@ -7,6 +7,11 @@ import { referenceHrefFromSubBlock, referencePathFromHref } from "../../api/clie
 import { AskAiButton } from "../../ai/AskAiButton";
 import { copyText } from "../../clipboard";
 import { ReferencePickerDialog } from "../../references/ReferencePickerDialog";
+import { useOptionalBibliography } from "../../bibliography/BibliographyContext";
+import { CitePickerDialog } from "../../bibliography/CitePickerDialog";
+import { BibIcon } from "../../bibliography/CitationsButton";
+import { LinkDecorations, bibKeyOf, linkDecorationsKey, type LinkRange } from "./linkDecorations";
+import { LinkBar, replaceLink } from "./LinkBar";
 import { useReferences } from "../../references/ReferencesContext";
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import type { SubBlockProps } from "../types";
@@ -14,7 +19,7 @@ import { codeBlockWithPicker } from "./CodeBlockView";
 import { markdownExtensions } from "./extensions";
 import { TableToolbar } from "./TableToolbar";
 
-function Toolbar({ editor, onLinkReference }: { editor: Editor; onLinkReference(): void }) {
+function Toolbar({ editor, onLinkReference, onCite }: { editor: Editor; onLinkReference(): void; onCite?(): void }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -48,6 +53,11 @@ function Toolbar({ editor, onLinkReference }: { editor: Editor; onLinkReference(
       {btn("{ }", state.codeBlock, () => chain().toggleCodeBlock().run(), "Code block (choose the language on the block)")}
       {btn("⊞", false, () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(), "Insert table")}
       {btn("📎", false, onLinkReference, "Link a reference file")}
+      {onCite && (
+        <button type="button" className="tb tb-cite" title="Cite a source from the bibliography" onMouseDown={(e) => e.preventDefault()} onClick={onCite}>
+          <BibIcon size={14} /> Cite
+        </button>
+      )}
     </div>
   );
 }
@@ -66,9 +76,28 @@ function insertReferenceLink(editor: Editor, node: ReferenceNode) {
   }
 }
 
+/** Inserts a citation `[Name](bib:key)`: on the selection if any, otherwise with the source name as text. */
+function insertCitation(editor: Editor, entry: BibEntry) {
+  const href = `bib:${entry.key}`;
+  const chain = editor.chain().focus();
+  if (editor.state.selection.empty) {
+    chain.insertContent([{ type: "text", text: entry.name, marks: [{ type: "link", attrs: { href } }] }, { type: "text", text: " " }]).run();
+  } else {
+    chain.extendMarkRange("link").setLink({ href }).run();
+  }
+}
+
 export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge, refLabel }: SubBlockProps<MarkdownContent>) {
-  const [picking, setPicking] = useState(false);
+  // Open pickers: `replace` is the link being changed (from the link bar), otherwise a new link is inserted.
+  const [picking, setPicking] = useState<{ replace?: LinkRange } | null>(null);
+  const [citing, setCiting] = useState<{ replace?: LinkRange } | null>(null);
   const references = useReferences();
+  const bib = useOptionalBibliography();
+  const bibRef = useRef(bib);
+  bibRef.current = bib;
+  const refPaths = useMemo(() => new Set(references.files.map((f) => f.path)), [references.files]);
+  const refPathsRef = useRef<Set<string> | null>(null);
+  refPathsRef.current = references.tree ? refPaths : null;
   const bridgeRef = useRef(commentBridge);
   bridgeRef.current = commentBridge;
   const editor = useEditor({
@@ -88,6 +117,12 @@ export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge, ref
         // Ctrl/⌘ + click on a link to a reference opens it in the viewer.
         if (!(event.ctrlKey || event.metaKey)) return false;
         const a = (event.target as HTMLElement).closest("a");
+        const citation = bibKeyOf(a?.getAttribute("href"));
+        if (citation !== null && bibRef.current) {
+          event.preventDefault();
+          bibRef.current.open(citation);
+          return true;
+        }
         const path = a && referencePathFromHref(a.getAttribute("href") ?? "");
         if (!path) return false;
         event.preventDefault();
@@ -95,7 +130,11 @@ export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge, ref
         return true;
       },
     },
-    extensions: [...markdownExtensions(codeBlockWithPicker), CommentHighlights],
+    extensions: [
+      ...markdownExtensions(codeBlockWithPicker),
+      CommentHighlights,
+      LinkDecorations(() => ({ bib: bibRef.current?.loaded ? bibRef.current.byKey : null, refs: refPathsRef.current })),
+    ],
     content: subBlock.content.markdown,
     contentType: "markdown",
     onUpdate: ({ editor: e }) => onChange({ markdown: e.getMarkdown() }),
@@ -137,6 +176,11 @@ export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge, ref
     unit: "text",
     adapter,
   });
+
+  // Link icons and "missing" flags follow the bibliography and the reference files.
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(linkDecorationsKey, true).setMeta("addToHistory", false));
+  }, [editor, bib?.byKey, bib?.loaded, refPaths]);
 
   // Floating "comment" button next to a non-empty selection.
   const wrap = useRef<HTMLDivElement>(null);
@@ -217,13 +261,44 @@ export function MarkdownEditor({ blockId, subBlock, onChange, commentBridge, ref
           🔗 Copy ref
         </button>
       )}
-      <Toolbar editor={editor} onLinkReference={() => setPicking(true)} />
+      <Toolbar editor={editor} onLinkReference={() => setPicking({})} onCite={bib ? () => setCiting({}) : undefined} />
+      <LinkBar
+        editor={editor}
+        wrap={wrap}
+        bib={bib?.loaded ? bib.byKey : null}
+        refs={refPaths}
+        onOpenCitation={(key) => bib?.open(key)}
+        onOpenReference={references.open}
+        onChangeCitation={(range) => setCiting({ replace: range })}
+        onChangeReference={(range) => setPicking({ replace: range })}
+      />
+      {bib && (
+        <CitePickerDialog
+          open={!!citing}
+          title={citing?.replace ? "Cite another source" : undefined}
+          onClose={() => setCiting(null)}
+          onPick={(entry) => {
+            const replace = citing?.replace;
+            setCiting(null);
+            if (!replace) return insertCitation(editor, entry);
+            // The text follows the new source when it was the old source's name.
+            const old = bib.byKey.get(bibKeyOf(replace.href) ?? "");
+            replaceLink(editor, replace, `bib:${entry.key}`, !old || replace.text === old.name ? entry.name : undefined);
+          }}
+        />
+      )}
       <ReferencePickerDialog
-        open={picking}
-        onClose={() => setPicking(false)}
+        open={!!picking}
+        title={picking?.replace ? "Link another file" : undefined}
+        onClose={() => setPicking(null)}
         onPick={(node) => {
-          setPicking(false);
-          insertReferenceLink(editor, node);
+          const replace = picking?.replace;
+          setPicking(null);
+          if (!replace) return insertReferenceLink(editor, node);
+          // The text follows the new file when it was the old file's name (with or without extension).
+          const oldName = decodeURIComponent(replace.href.split(/[?#]/)[0].split("/").pop() ?? "");
+          const wasName = replace.text === oldName || replace.text === oldName.replace(/\.[^.]+$/, "");
+          replaceLink(editor, replace, referenceHrefFromSubBlock(node.path), wasName ? node.name : undefined);
         }}
       />
       <TableToolbar editor={editor} />

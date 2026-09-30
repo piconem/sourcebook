@@ -15,6 +15,7 @@ describe("Ask AI: available modes", () => {
     ["selection", { kind: "selection", ...sub, quote: "x" }, ["brainstorm", "critique", "build", "improve", "comment", "custom"]],
     ["comment", { kind: "comment", ...sub, commentId: "c1", author: "Mario", excerpt: "?" }, ["comment", "custom"]],
     ["reference", { kind: "reference", path: "papers/spec.md" }, ["brainstorm", "critique", "custom"]],
+    ["bibliography entry", { kind: "bibliography", key: "knuth1984", name: "Knuth 1984" }, ["brainstorm", "critique", "custom"]],
   ])("%s", (_n, target, modes) => expect(modesFor(target)).toEqual(modes));
 
   it("blocks writing modes in read-only mode", () => {
@@ -66,6 +67,15 @@ describe("Ask AI: prompts", () => {
     expect(custom).toContain('read_reference (project "payment-service", path "papers/spec.md")');
     expect(custom).toMatch(/Regarding the reference file references\/papers\/spec\.md:\nSummarise it in 5 bullets$/);
     expect(buildPrompt(project, { kind: "document" }, "custom", "  ")).toMatch(/\[write your request here\]$/);
+  });
+
+  it("points at a bibliography entry with its key", () => {
+    const t: AiTarget = { kind: "bibliography", key: "knuth1984", name: "Knuth 1984", title: "Literate Programming" };
+    expect(referenceFor(project, t)).toBe('Sourcebook project "payment-service" · bibliography entry bib:knuth1984 ("Knuth 1984")');
+    const text = buildPrompt(project, t, "critique", "");
+    expect(text).toContain('read_bib_entry (project "payment-service", key "knuth1984")');
+    expect(text).toMatch(/Check the bibliography entry bib:knuth1984 \("Knuth 1984", Literate Programming\).*update_bib_entry/);
+    expect(buildPrompt(project, t, "brainstorm", "")).toContain("Never invent sources");
   });
 
   it("uses the template path for templates", () => {

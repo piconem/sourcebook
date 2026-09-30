@@ -24,7 +24,8 @@ export type AiTarget =
   | ({ kind: "subblock" } & SubBlockInfo)
   | ({ kind: "selection"; lines?: { first: number; last: number }; quote?: string } & SubBlockInfo)
   | ({ kind: "comment"; commentId: string; author: string; excerpt: string } & SubBlockInfo)
-  | { kind: "reference"; path: string };
+  | { kind: "reference"; path: string }
+  | { kind: "bibliography"; key: string; name: string; title?: string };
 
 export type AiMode = "brainstorm" | "critique" | "build" | "improve" | "comment" | "custom";
 
@@ -56,6 +57,7 @@ export function modesFor(target: AiTarget): AiMode[] {
     case "comment":
       return ["comment", "custom"];
     case "reference":
+    case "bibliography":
       return ["brainstorm", "critique", "custom"];
   }
 }
@@ -90,6 +92,8 @@ export function referenceFor(p: AiProject, t: AiTarget): string {
       return `Sourcebook ${where} · comment ${t.commentId} on ${t.ref} · ${uri(p, "comments", t.commentId)}`;
     case "reference":
       return `Sourcebook ${where} · reference file "references/${t.path}"`;
+    case "bibliography":
+      return `Sourcebook ${where} · bibliography entry bib:${t.key} ("${t.name}")`;
   }
 }
 
@@ -108,6 +112,8 @@ function describe(t: AiTarget): string {
       return `the comment thread ${t.commentId} by ${t.author} on ${t.ref} ("${truncate(t.excerpt, 120)}")`;
     case "reference":
       return `the reference file references/${t.path}`;
+    case "bibliography":
+      return `the bibliography entry bib:${t.key} ("${t.name}"${t.title ? `, ${truncate(t.title, 120)}` : ""})`;
   }
 }
 
@@ -129,6 +135,8 @@ function readStep(p: AiProject, t: AiTarget): string {
       return `Read it with list_comments (${project}, target "${t.id}") and read the sub-block with read_subblock.`;
     case "reference":
       return `Read it with read_reference (${project}, path "${t.path}"), and get_outline to relate it to the project.`;
+    case "bibliography":
+      return `Read it with read_bib_entry (${project}, key "${t.key}") — it lists where it is cited — and get_outline for context.`;
   }
 }
 
@@ -144,8 +152,12 @@ function modeInstructions(mode: AiMode, t: AiTarget): string {
         : "with add_comment, attached to the precise lines or quoted text they refer to (not to whole sub-blocks unless needed)";
   switch (mode) {
     case "brainstorm":
+      if (t.kind === "bibliography")
+        return `Let's brainstorm about ${what}: what it contributes to the document, where it should be cited or associated (sections/sub-blocks, with references), and which related sources could complement it. Never invent sources: mark any suggestion I need to verify. Do not modify anything in Sourcebook.`;
       return `Let's brainstorm about ${what}. Propose ideas, alternatives, missing aspects and open questions, grouped and prioritised, each with a short rationale. Do not modify anything in Sourcebook; ask me before turning any idea into content.`;
     case "critique":
+      if (t.kind === "bibliography")
+        return `Check ${what}: correctness and completeness of its fields (type, authors, year, venue, DOI, link), its BibTeX and text citation, and whether the places that cite it really use it appropriately. Answer with a prioritised list of issues and suggested fixes (update_bib_entry after my approval). Do not change anything yet.`;
       return `Critically review ${what}: check it against its objective and the rest of the document for clarity, correctness, completeness, consistency and risks. Answer with a prioritised list of issues, each with its precise location (§x#n:Lk) and a suggested fix. Do not change the content.`;
     case "build":
       return t.kind === "document"

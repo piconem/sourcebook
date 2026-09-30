@@ -19,6 +19,9 @@ import { outlineNumbers, withDepth } from "./tree";
 import { TopBar } from "./components/TopBar";
 import { ReferencesBrowser } from "./references/ReferencesBrowser";
 import { ReferencesProvider, useReferences } from "./references/ReferencesContext";
+import { BibliographyPage } from "./bibliography/BibliographyPage";
+import { BibliographyProvider, useBibliography } from "./bibliography/BibliographyContext";
+import { BibIcon } from "./bibliography/CitationsButton";
 
 /** Sidebar entry opening the References file manager in the main area. */
 function ReferencesNavItem({ active, onClick }: { active: boolean; onClick(): void }) {
@@ -32,6 +35,20 @@ function ReferencesNavItem({ active, onClick }: { active: boolean; onClick(): vo
       </span>
       <span className="nav-label">References</span>
       <span className="nav-count">{files.length}</span>
+    </button>
+  );
+}
+
+/** Sidebar entry opening the project's bibliography. */
+function BibliographyNavItem({ active, onClick }: { active: boolean; onClick(): void }) {
+  const { entries } = useBibliography();
+  return (
+    <button className={`nav-item${active ? " selected" : ""}`} aria-current={active ? "page" : undefined} onClick={onClick}>
+      <span className="nav-icon" aria-hidden="true">
+        <BibIcon size={16} />
+      </span>
+      <span className="nav-label">Bibliography</span>
+      <span className="nav-count">{entries.length}</span>
     </button>
   );
 }
@@ -51,7 +68,7 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
   useEffect(() => subscribeProjectEvents(qc, changes), [qc, changes]);
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [page, setPage] = useState<"block" | "references">("block");
+  const [page, setPage] = useState<"block" | "references" | "bibliography">("block");
   const [scrollTo, setScrollTo] = useState<{ id: string; seq: number } | null>(null);
   const main = useRef<HTMLElement>(null);
   const selectBlock = (id: string) => {
@@ -101,6 +118,7 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
     <ExternalChangesContext.Provider value={changes}>
     <AskAiProvider project={{ kind, id, name: project.name }}>
     <ReferencesProvider>
+    <BibliographyProvider onGoTo={selectBlock}>
     <div className="app">
       <aside className="sidebar">
         <div className="sidebar-head">
@@ -122,6 +140,7 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
         </div>
         <nav className="sidebar-nav" aria-label="Project">
           <ReferencesNavItem active={page === "references"} onClick={() => setPage("references")} />
+          <BibliographyNavItem active={page === "bibliography"} onClick={() => setPage("bibliography")} />
         </nav>
         <div className="sidebar-label">Structure</div>
         <OutlineTree project={project} selectedId={page === "block" ? selected : null} onSelect={selectBlock} />
@@ -134,10 +153,12 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
       </aside>
       <main
         ref={main}
-        className={`main${page === "references" ? " main-references" : ""}${scrollMode === "document" && page === "block" ? " main-document" : ""}`}
+        className={`main${page !== "block" ? " main-references" : ""}${scrollMode === "document" && page === "block" ? " main-document" : ""}`}
       >
         {page === "references" ? (
           <ReferencesBrowser />
+        ) : page === "bibliography" ? (
+          <BibliographyPage />
         ) : scrollMode === "document" ? (
           <DocumentView project={project} scrollRoot={main} scrollTo={scrollTo} onCurrentChange={setSelected} />
         ) : selected ? (
@@ -154,6 +175,7 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
       </main>
       <ExportDialog open={exporting} onClose={() => setExporting(false)} />
     </div>
+    </BibliographyProvider>
     </ReferencesProvider>
     </AskAiProvider>
     </ExternalChangesContext.Provider>

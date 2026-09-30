@@ -35,6 +35,10 @@ export const SubBlockRefSchema = z.object({
   props: z.record(z.string(), z.unknown()),
   /** Content revision, incremented on every content change (optimistic concurrency, live sync). */
   rev: z.number().int().nonnegative().optional(),
+  /** Bibliography keys associated with the whole sub-block. */
+  citations: z.array(z.string()).optional(),
+  /** Reference files (paths inside references/) associated with the whole sub-block. */
+  references: z.array(z.string()).optional(),
 });
 export type SubBlockRef = z.infer<typeof SubBlockRefSchema>;
 
@@ -43,6 +47,10 @@ export const BlockMetaSchema = z.object({
   id: IdSchema,
   title: z.string(),
   objective: ObjectiveSchema.optional(),
+  /** Bibliography keys associated with the whole section. */
+  citations: z.array(z.string()).optional(),
+  /** Reference files (paths inside references/) associated with the whole section. */
+  references: z.array(z.string()).optional(),
   parentId: IdSchema.nullable(),
   order: z.number().int().nonnegative(),
   subBlocks: z.array(SubBlockRefSchema),
@@ -190,6 +198,8 @@ export interface ReferenceNode {
   kind: "file" | "dir";
   size?: number;
   modified?: string;
+  /** Files: whether the assistant can read it via MCP (natively, or through converted Markdown). */
+  mcp?: import("./mcpContent.js").McpInfo;
   children?: ReferenceNode[];
 }
 
@@ -206,6 +216,9 @@ export const UploadReferencesQuerySchema = z.object({ dir: ReferencePathSchema.d
 export const ReferencePathsBodySchema = z.object({
   paths: z.array(ReferencePathSchema.min(1)).min(1).max(10_000),
 });
+
+/** Reference files associated with a whole section or sub-block (replaces the list). */
+export const AttachReferencesBodySchema = z.object({ paths: z.array(ReferencePathSchema.min(1)).max(500) });
 
 export const ZipReferencesBodySchema = ReferencePathsBodySchema.extend({
   /** Folder the entries are made relative to (usually the folder being browsed). */
@@ -355,7 +368,7 @@ export type UpdateProjectBody = z.infer<typeof UpdateProjectBodySchema>;
 
 /** Change notification streamed to open editors (Server-Sent Events). */
 export interface NotebookEvent {
-  type: "blocks" | "block" | "subblock" | "comments" | "references";
+  type: "blocks" | "block" | "subblock" | "comments" | "references" | "bibliography";
   blockId?: string;
   subBlockId?: string;
   /** New content revision (subblock events). */

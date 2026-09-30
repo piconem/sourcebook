@@ -3,7 +3,7 @@ import type { NotebookEvent } from "@sourcebook/shared";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { compileProject } from "../markdown/remark.js";
+import { BIB_EXPORT_FILE, compileProject } from "../markdown/remark.js";
 
 export const projectRoutes =
   (): FastifyPluginAsyncZod =>
@@ -33,20 +33,21 @@ export const projectRoutes =
 
     app.get("/markdown", async (req, reply) => {
       reply.type("text/markdown; charset=utf-8");
-      return (await compileProject(req.nb.store)).markdown;
+      return (await compileProject(req.nb.store, req.nb.bib)).markdown;
     });
 
     /** Compiled document plus the list of files an export archive would contain. */
-    app.get("/export", async (req) => compileProject(req.nb.store));
+    app.get("/export", async (req) => compileProject(req.nb.store, req.nb.bib));
 
     /**
      * Self-contained archive: the compiled Markdown at the root plus every referenced file at the
      * same relative path, so links keep working wherever the archive is extracted.
      */
     app.get("/export.zip", async (req, reply) => {
-      const { fileName, markdown, files } = await compileProject(req.nb.store);
+      const { fileName, markdown, files, generated } = await compileProject(req.nb.store, req.nb.bib);
       const entries: Record<string, Uint8Array> = { [fileName]: strToU8(markdown) };
       for (const f of files) entries[f] = await readFile(join(req.nb.store.root, f));
+      if (generated.includes(BIB_EXPORT_FILE)) entries[BIB_EXPORT_FILE] = strToU8(await req.nb.bib.exportBib());
       const zip = zipSync(entries, { level: 6 });
       const zipName = fileName.replace(/\.md$/, ".zip");
       reply

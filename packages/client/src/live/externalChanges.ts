@@ -4,6 +4,7 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import { CLIENT_ID, notebookBase } from "../api/client";
 import { keys } from "../api/queries";
 import { referencesKey } from "../references/ReferencesContext";
+import { bibliographyKey } from "../bibliography/BibliographyContext";
 
 /** Latest external content change per sub-block (revision and who made it). */
 export class ExternalChanges {
@@ -58,6 +59,10 @@ export function subscribeProjectEvents(qc: QueryClient, changes: ExternalChanges
       void qc.invalidateQueries({ queryKey: keys.block(ev.blockId) });
     } else if (ev.type === "references") {
       void qc.invalidateQueries({ queryKey: referencesKey });
+      void qc.invalidateQueries({ queryKey: ["mcp-content"] });
+    } else if (ev.type === "bibliography") {
+      void qc.invalidateQueries({ queryKey: bibliographyKey });
+      void qc.invalidateQueries({ queryKey: ["bibliography-usages"] });
     }
   };
   return () => es.close();

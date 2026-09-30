@@ -6,7 +6,7 @@ import { formatSize } from "./ReferenceViewerDialog";
 import { viewerFor } from "./viewers";
 
 /** Choose a reference file (filterable flat list with folder paths). */
-export function ReferencePickerDialog({ open, onPick, onClose }: { open: boolean; onPick(node: ReferenceNode): void; onClose(): void }) {
+export function ReferencePickerDialog({ open, onPick, onClose, title = "Link a reference" }: { open: boolean; onPick(node: ReferenceNode): void; onClose(): void; title?: string }) {
   const { files } = useReferences();
   const [q, setQ] = useState("");
   useEffect(() => {
@@ -14,7 +14,7 @@ export function ReferencePickerDialog({ open, onPick, onClose }: { open: boolean
   }, [open]);
   const shown = files.filter((f) => f.path.toLowerCase().includes(q.toLowerCase()));
   return (
-    <Dialog open={open} title="Link a reference" onClose={onClose} actions={<button onClick={onClose}>Cancel</button>}>
+    <Dialog open={open} title={title} onClose={onClose} actions={<button onClick={onClose}>Cancel</button>}>
       {files.length === 0 ? (
         <p className="muted">No references yet. Add files from the References panel in the sidebar.</p>
       ) : (

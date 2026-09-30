@@ -6,6 +6,9 @@ import type { NotebookEvent } from "@sourcebook/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { tempProject } from "./helpers.js";
+import { sampleDocx, samplePdf } from "./docFixtures.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 async function setup(opts: { readOnly?: boolean } = {}) {
   const workspace = await tempProject();
@@ -36,7 +39,7 @@ async function setup(opts: { readOnly?: boolean } = {}) {
     if (r.isError) throw new Error(`${name} failed: ${r.text}`);
     return r.text;
   };
-  return { app, built, rest, client, call, ok, ids: { overview: overview.id, md: md.id, scope: scope.id, code: code.id, design: design.id } };
+  return { app, built, rest, client, call, ok, workspace, ids: { overview: overview.id, md: md.id, scope: scope.id, code: code.id, design: design.id } };
 }
 
 describe("MCP server: discovery", () => {
@@ -45,10 +48,11 @@ describe("MCP server: discovery", () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "add_comment", "add_subblock", "create_project", "create_section", "create_template", "delete_comment", "delete_section", "delete_subblock",
-      "edit_subblock_text", "get_outline", "list_comments", "list_references", "list_workspace", "move_section", "move_subblock",
-      "read_document", "read_reference", "read_section", "read_subblock", "reanchor_comment", "reply_to_comment", "search",
-      "update_section", "update_subblock",
+      "add_bib_entry", "add_comment", "add_image_from_reference", "add_subblock", "attach_reference", "cite", "create_project", "create_section", "create_template", "delete_bib_entry",
+      "delete_comment", "delete_section", "delete_subblock", "detach_reference", "edit_subblock_text", "export_bibtex", "get_outline", "import_bibtex",
+      "list_bibliography", "list_comments", "list_references", "list_workspace", "move_section", "move_subblock", "read_bib_entry",
+      "read_document", "read_reference", "read_reference_figures", "read_reference_pages", "read_section", "read_subblock", "reanchor_comment", "reply_to_comment",
+      "save_reference_transcription", "search", "uncite", "update_bib_entry", "update_section", "update_subblock",
     ]);
     expect(tools.find((t) => t.name === "delete_section")?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === "get_outline")?.annotations?.readOnlyHint).toBe(true);
@@ -59,7 +63,8 @@ describe("MCP server: discovery", () => {
     const { client } = await setup({ readOnly: true });
     const names = (await client.listTools()).tools.map((t) => t.name);
     expect(names).toContain("get_outline");
-    expect(names.some((n) => /^(create|add|update|edit|move|delete|reply|reanchor)_/.test(n))).toBe(false);
+    expect(names.some((n) => /^(create|add|update|edit|move|delete|reply|reanchor|import)_|^(cite|uncite|attach_reference|detach_reference)$|^save_/.test(n))).toBe(false);
+    expect(names).toContain("list_bibliography");
   });
 });
 
@@ -192,8 +197,8 @@ describe("MCP server: comments", () => {
 });
 
 describe("MCP server: references, resources, prompts, live events", () => {
-  it("lists and reads text references, refusing binaries", async () => {
-    const { app, ok } = await setup();
+  it("lists, reads and attaches references, refusing binaries as text", async () => {
+    const { app, ok, call } = await setup();
     const boundary = "----r";
     const upload = (name: string, data: string) =>
       app.inject({
@@ -204,9 +209,22 @@ describe("MCP server: references, resources, prompts, live events", () => {
       });
     await upload("spec.md", "# Spec\nMust be fast.");
     await upload("paper.pdf", "%PDF-1.4");
-    expect(await ok("list_references", { project: "demo" })).toMatch(/docs\/\n  paper\.pdf .*\n  spec\.md \(\d+ bytes\) — path "docs\/spec\.md"/);
+    expect(await ok("list_references", { project: "demo" })).toMatch(/docs\/\n  paper\.pdf .*\n  spec\.md \(\d+ bytes\) — path "docs\/spec\.md" — text/);
     expect(await ok("read_reference", { project: "demo", path: "docs/spec.md" })).toBe("# Spec\nMust be fast.");
-    expect(await ok("read_reference", { project: "demo", path: "docs/paper.pdf" })).toMatch(/not a text format/);
+    // Not a real PDF: the conversion fails and says why.
+    expect(await ok("read_reference", { project: "demo", path: "docs/paper.pdf" })).toMatch(/^references\/docs\/paper\.pdf could not be converted to Markdown: /);
+
+    // Attach to a whole section / sub-block, link in text; the outline shows both.
+    expect(await ok("attach_reference", { project: "demo", target: "§1", paths: ["references/docs/spec.md"] })).toBe("§1 now has these reference files: docs/spec.md.");
+    expect(await ok("attach_reference", { project: "demo", target: "§1.1#1", paths: ["docs/paper.pdf"] })).toBe("§1.1#1 now has these reference files: docs/paper.pdf.");
+    await ok("edit_subblock_text", { project: "demo", subblock: "§1#1", edits: [{ find: "It returns JSON.", replace: "It returns JSON ([spec](../../../references/docs/spec.md))." }] });
+    const outline = await ok("get_outline", { project: "demo" });
+    expect(outline).toContain("📎 files: docs/spec.md");
+    expect(outline).toMatch(/#1 markdown · "Summary" .*📎 docs\/spec\.md \(linked in text\)/);
+    expect(outline).toMatch(/#1 code\/python .*📎 docs\/paper\.pdf \(associated\)/);
+    expect(await ok("read_section", { project: "demo", section: "§1" })).toContain("reference files (whole section): docs/spec.md");
+    expect(await ok("detach_reference", { project: "demo", target: "§1.1#1", paths: ["docs/paper.pdf"] })).toBe("§1.1#1 now has these reference files: none.");
+    expect((await call("attach_reference", { project: "demo", target: "§1", paths: ["nope.pdf"] })).text).toMatch(/Unknown reference file\(s\): nope\.pdf/);
   });
 
   it("offers resources with stable URIs and prompts", async () => {
@@ -241,7 +259,7 @@ describe("MCP over HTTP (/mcp)", () => {
     close = () => app.close();
     const client = new Client({ name: "http-test", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${address}/mcp`)));
-    expect((await client.listTools()).tools.length).toBe(24);
+    expect((await client.listTools()).tools.length).toBe(39);
     const res = (await client.callTool({ name: "get_outline", arguments: { project: "demo" } })) as { content: { text: string }[] };
     expect(res.content[0].text).toContain("§1.1 Scope");
     await client.close();
@@ -255,5 +273,107 @@ describe("MCP over HTTP (/mcp)", () => {
     const origin = await app.inject({ method: "POST", url: "/mcp", headers: { host: "127.0.0.1:4000", origin: "https://evil.example", "content-type": "application/json" }, payload: body });
     expect(origin.statusCode).toBe(403);
     expect((await app.inject({ method: "GET", url: "/mcp", headers: { host: "localhost:4000" } })).statusCode).toBe(405);
+  });
+});
+
+describe("MCP server: bibliography", () => {
+  it("adds, imports, reads, cites in text, associates, renames and deletes sources", async () => {
+    const { ok, call } = await setup();
+    expect(await ok("list_bibliography", { project: "demo" })).toBe("The bibliography is empty.");
+    expect(await ok("add_bib_entry", { project: "demo", type: "software", name: "tsx", title: "tsx: TypeScript Execute", venue: "GitHub", url: "https://github.com/privatenumber/tsx", year: "2024" })).toBe(
+      "Added bib:tsx2024typescript — tsx. Cite it in Markdown as [tsx](bib:tsx2024typescript), or associate it with cite.",
+    );
+    expect(await ok("import_bibtex", { project: "demo", bibtex: "@article{knuth84, author={Donald E. Knuth}, title={Literate Programming}, journal={The Computer Journal}, year={1984}}" })).toBe("Created: knuth84");
+    expect(await ok("list_bibliography", { project: "demo", query: "literate" })).toContain("- bib:knuth84 · article · Knuth 1984 — Literate Programming (1984)");
+
+    // Cite in text and associate with a whole sub-block / section
+    await ok("edit_subblock_text", { project: "demo", subblock: "§1#1", edits: [{ find: "It returns JSON.", replace: "It returns JSON, as in [Knuth 1984](bib:knuth84)." }] });
+    expect(await ok("cite", { project: "demo", target: "§1.1#1", keys: ["bib:tsx2024typescript"] })).toBe("§1.1#1 is now associated with: tsx2024typescript.");
+    expect(await ok("cite", { project: "demo", target: "§1", keys: ["knuth84"] })).toBe("§1 is now associated with: knuth84.");
+    const outline = await ok("get_outline", { project: "demo" });
+    expect(outline).toContain("📚 sources: knuth84");
+    expect(outline).toMatch(/#1 markdown · "Summary" .*📚 knuth84 \(cited in text\)/);
+    expect(outline).toMatch(/#1 code\/python .*📚 tsx2024typescript \(associated\)/);
+    expect(await ok("read_subblock", { project: "demo", subblock: "§1#1" })).toContain("bibliography: knuth84 (cited in text)");
+
+    const entry = await ok("read_bib_entry", { project: "demo", key: "knuth84" });
+    expect(entry).toContain("text citation: Knuth, D. E. (1984). Literate Programming. The Computer Journal.");
+    expect(entry).toMatch(/Used in:\n- §1 "Overview" — associated with the whole section\n- §1#1 "Summary" — cited in the text/);
+    expect(await ok("search", { project: "demo", query: "TypeScript Execute" })).toContain("bib:tsx2024typescript (bibliography title) tsx");
+    expect(await ok("export_bibtex", { project: "demo" })).toContain("@software{tsx2024typescript,");
+
+    // Rename: text and associations follow
+    expect(await ok("update_bib_entry", { project: "demo", key: "knuth84", newKey: "knuth1984" })).toBe("Updated bib:knuth1984 (renamed from knuth84; citations updated).");
+    expect(await ok("read_subblock", { project: "demo", subblock: "§1#1" })).toContain("[Knuth 1984](bib:knuth1984)");
+    expect(await ok("get_outline", { project: "demo" })).toContain("📚 sources: knuth1984");
+
+    // Delete: refused while used (with the places), then forced
+    const refused = await call("delete_bib_entry", { project: "demo", key: "knuth1984" });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/409.*used in 2 place\(s\)[\s\S]*- §1 "Overview" \(associated section\)/);
+    expect(await ok("delete_bib_entry", { project: "demo", key: "knuth1984", force: true })).toBe("Deleted bib:knuth1984 and 1 association(s).");
+    expect(await ok("uncite", { project: "demo", target: "§1.1#1", keys: ["tsx2024typescript"] })).toBe("§1.1#1 is now associated with: no sources.");
+    expect((await call("cite", { project: "demo", target: "§1", keys: ["nope"] })).text).toMatch(/Unknown bibliography key\(s\): nope/);
+  });
+});
+
+describe("MCP server: converted reference documents", () => {
+  it("reads PDFs and Office files as Markdown, pages as images, images as images, and saves transcriptions", async () => {
+    const { client, ok, call, workspace } = await setup();
+    const refs = join(workspace, "projects", "demo", "references");
+    await mkdir(refs, { recursive: true });
+    await writeFile(join(refs, "paper.pdf"), await samplePdf());
+    await writeFile(join(refs, "spec.docx"), sampleDocx());
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwnwEIGP4zMAAAPPIC/nPNnAoAAAAASUVORK5CYII=", "base64");
+    await writeFile(join(refs, "photo.png"), png);
+
+    const pdf = await ok("read_reference", { project: "demo", path: "paper.pdf" });
+    expect(pdf.split("\n").slice(0, 2)).toEqual([
+      expect.stringMatching(/^references\/paper\.pdf — converted to Markdown from PDF \(6 pages\) on \d{4}-\d{2}-\d{2}\.$/),
+      "Pages 3-4 have no usable text (scans, figures, diagrams): read them with read_reference_pages; after reading one you may save its text with save_reference_transcription.",
+    ]);
+    expect(pdf).toContain("## Page 1\n\n### Introduction");
+    const part = await ok("read_reference", { project: "demo", path: "references/paper.pdf", parts: "5" });
+    expect(part).toContain("## Page 5");
+    expect(part).not.toContain("## Page 1");
+    expect((await call("read_reference", { project: "demo", path: "paper.pdf", parts: "9" })).text).toMatch(/Invalid parts "9"/);
+    expect(await ok("read_reference", { project: "demo", path: "spec.docx" })).toContain("### Design notes");
+    expect(await ok("list_references", { project: "demo" })).toMatch(/paper\.pdf \(\d+ bytes\) — path "paper\.pdf" — Markdown, 6 pages, 2 figures \(read_reference_figures\); 2 only as images \(read_reference_pages\)\nphoto\.png .* — image\nspec\.docx .* — Markdown/);
+
+    // Page images and images as MCP image content.
+    const pages = (await client.callTool({ name: "read_reference_pages", arguments: { project: "demo", path: "paper.pdf", pages: "3-4" } })) as { content: { type: string; text?: string; mimeType?: string; data?: string }[] };
+    expect(pages.content.map((c) => c.type)).toEqual(["text", "image", "text", "image"]);
+    expect(pages.content[0].text).toBe("Page 3 of references/paper.pdf (scan):");
+    expect(pages.content[1].mimeType).toBe("image/webp");
+    expect(Buffer.from(pages.content[1].data!, "base64").subarray(8, 12).toString()).toBe("WEBP");
+    const photo = (await client.callTool({ name: "read_reference", arguments: { project: "demo", path: "photo.png" } })) as { content: { type: string; mimeType?: string }[] };
+    expect(photo.content.map((c) => [c.type, c.mimeType])).toEqual([["text", undefined], ["image", "image/webp"]]);
+
+    // Figures cut out of text pages, with captions.
+    expect(pdf).toContain("2 figures (images, charts, diagrams, graphic tables) were cut out and listed at the end of their pages: look at them with read_reference_figures.");
+    const figs = (await client.callTool({ name: "read_reference_figures", arguments: { project: "demo", path: "paper.pdf", pages: "2" } })) as { content: { type: string; text?: string; mimeType?: string }[] };
+    expect(figs.content.map((c) => c.text ?? c.mimeType)).toEqual([
+      "Figure p2-1 (page 2) of references/paper.pdf — Figure 1: A scanned sample used as a picture.",
+      "image/webp",
+      "Figure p2-2 (page 2) of references/paper.pdf — Fig. 2. Latency by service, measured in September.",
+      "image/webp",
+    ]);
+    const one = (await client.callTool({ name: "read_reference_figures", arguments: { project: "demo", path: "paper.pdf", figures: "p2-2" } })) as { content: unknown[] };
+    expect(one.content).toHaveLength(2);
+    expect((await call("read_reference_figures", { project: "demo", path: "paper.pdf", figures: "p7-1" })).text).toMatch(/Unknown figure\(s\) p7-1; available: p2-1, p2-2/);
+
+    // A figure of the paper as an image sub-block of §2, with its caption; the paper is attached to it.
+    expect(await ok("add_image_from_reference", { project: "demo", section: "§2", path: "paper.pdf", figure: "p2-2" })).toBe(
+      'Added §2#1 (image from references/paper.pdf, figure p2-2) with caption "Fig. 2. Latency by service, measured in September."; the source is attached to it.',
+    );
+    expect(await ok("get_outline", { project: "demo" })).toMatch(/#1 image .*📎 paper\.pdf \(associated\)/);
+    expect((await call("add_image_from_reference", { project: "demo", section: "§1#1", path: "photo.png" })).text).toMatch(/Give a section/);
+
+    // Transcription of a scanned page becomes its text.
+    expect(await ok("save_reference_transcription", { project: "demo", path: "paper.pdf", page: 3, markdown: "Scanned text line" })).toBe("Saved the transcription of page 3 of references/paper.pdf.");
+    const after = await ok("read_reference", { project: "demo", path: "paper.pdf", parts: "3" });
+    expect(after).toContain("Page 4 has no usable text (scans, figures, diagrams): read it with read_reference_pages;");
+    expect(after).toContain("Page 3 was transcribed from its image.");
+    expect(after).toContain("_Transcribed by Claude (assistant) from the page image._\n\nScanned text line");
   });
 });

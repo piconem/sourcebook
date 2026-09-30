@@ -298,11 +298,88 @@ instructions for the chosen kind of interaction, plus optional custom text (`pac
 | Selection (text / code lines) | ✓ | ✓ | ✓ (expand) | ✓ (only that part) | ✓ anchored | ✓ |
 | Comment thread | – | – | – | – | ✓ discuss & reply | ✓ |
 | Reference file | ✓ | ✓ | – | – | – | ✓ |
+| Bibliography entry | ✓ (where to cite, related sources — never invented) | ✓ (fields, BibTeX, usage) | – | – | – | ✓ |
 
 Writing modes (build, improve, comment) are disabled when the MCP settings grant read-only access; a warning appears
 when both transports are off. The last used mode is remembered. A test checks that every reference written in the
 prompts is parsed by the MCP server's reference parser.
 
+## Bibliography (sources and citations)
+- One list of sources per project/template in `bibliography.json` (`{ version: 1, entries }`, sorted by name), copied
+  with projects/templates and included in template archives (validated: schema, unique keys; citations of missing
+  keys are warnings). It is not a folder of files: References hold input files, the bibliography holds citable sources
+  (papers, books, websites, software, datasets, videos…); a source can link to a reference file through its Link.
+- Entry: `key` (the id, also the BibTeX key: `^[A-Za-z][\w:.-]{0,63}$`, unique), `type` (14 BibTeX types + biblatex
+  `online`, `software`, `dataset`, `report`, `patent`, `video`), `name` (short label shown in citations, e.g.
+  "Knuth 1984"), `authors`, `year`, `venue` (written to the BibTeX field of the type: journal, booktitle, publisher,
+  school, institution, howpublished, organization, holder), `title`, `abstract`, `description` (BibTeX `note`), `doi`,
+  `url`, `textCitation`, `bibtex`.
+- BibTeX is either pasted (kept verbatim; its key follows renames) or generated from the fields on request (⚙ Generate,
+  which asks before replacing a different text). Pasting into an empty new entry fills its fields. The text citation
+  is an author-year line ("Knuth, D. E. (1984). Title. Venue. https://doi.org/…"), generated the same way. Creating
+  without a key derives one: first author (or name) + year + first significant title word (`knuth1984literate`).
+- **Citations in text** are ordinary Markdown links `[Name](bib:key)`, so sources stay plain Markdown and survive any
+  editor; the ❝ Cite toolbar button (distinct from 📎 References) inserts them on the selection or as the name. In the
+  editor they show as chips with the source in a tooltip, missing keys are underlined in red, Ctrl/⌘+click opens the
+  source. **Associations** (📚 on section and sub-block headers) store keys in `block.json` (`citations` on the block or
+  on a sub-block ref) for sources that support a whole part.
+- Renaming a key rewrites every `](bib:old)` link and association (sub-block revisions are bumped, so open editors and
+  the assistant see the change). Deleting a used source is refused (409 with the list of usages) unless forced, which
+  removes associations; text links remain and show as missing.
+- Export: `bib:` links point to anchors in a final **References** section listing every cited or associated source
+  (text citation, or "key (not in the bibliography)"); the ZIP also contains `bibliography.bib` (stored or generated
+  BibTeX of all entries) for LaTeX.
+
+## Links in Markdown and attached files
+- Links keep their Markdown form (`[text](bib:key)`, `[text](../../../references/<path>)`, `[text](https://…)`); the
+  editor only decorates them: a book icon for citations and a paperclip for reference files (widgets, not part of the
+  text), dotted/solid underline, a tooltip, and a red wavy underline when the source or file does not exist.
+- With the cursor on a link a bar shows its target with **Open**, **Change…** (citation/file pickers; the text follows
+  when it was the old name) or **Edit** (web address), **Unlink** (keeps the text) and **Remove** (deletes it).
+- 📎 on section and sub-block headers attaches reference files to the whole part (`references` in `block.json`, like
+  `citations`), listing files linked in the text too. Renaming a file or folder in References updates attachments and
+  Markdown links (sub-block revisions bumped); deleting drops attachments and shows where the files were used (links
+  in the text stay, flagged as missing). The export adds an "_Attachments:_" line after the section/sub-block and the
+  files go into the ZIP. MCP: `attach_reference` / `detach_reference`; the outline shows `📎`.
+
+## Reference files for the assistant (Markdown conversion)
+- Every reference file has an MCP status: **text** and **images** are read as they are; documents are **converted to
+  Markdown** automatically (on upload, or when the file is first listed, e.g. copied in by hand; again when it changes —
+  size/mtime, with a SHA-256 recorded); other formats are **not readable**. Everything runs in Node (no Python,
+  LibreOffice or external services): `pdfjs-dist` (+ `@napi-rs/canvas`, a prebuilt npm binary, for page images),
+  `mammoth` + `turndown` (Word), `word-extractor` (`.doc`), our own readers for PowerPoint/OpenDocument/EPUB/RTF/Jupyter
+  (`fflate` + `@xmldom/xmldom`), `exceljs`, `mailparser`, `@kenjiuno/msgreader`.
+- Output: `references/.mcp/<path>/content.md` (a preamble, then one part per page/slide/sheet/chapter/file, each opened
+  by `<!-- sourcebook:page N -->` and a `## Page N` heading so parts can be read separately), `manifest.json` (source
+  size/mtime/hash, converter, per-part analysis, warnings or the error) and `pages/pNNN.webp`. The folder is hidden in
+  References, follows renames, is removed with its file, kept when copying projects (timestamps preserved) and left out
+  of template archives (rebuilt after import). Conversions run one at a time per project, in the background.
+- PDF pages are classified from `getTextContent` and the operator list (images' area through the transformation
+  matrices, path operations, text drawn in render mode 3): **text** (≥ 80 readable characters), **text + figures**
+  (images ≥ 8 % of the page), **scan** (an image ≥ 85 % of the page; with an invisible OCR layer its text is used and
+  flagged), **figures**, **vector** drawing, **blank**; a text layer that is mostly replacement/private-use characters
+  counts as unreadable. Pages without usable text get an image (≈ 1100 px wide WebP) and a note in the Markdown;
+  headings come from larger fonts, paragraphs from vertical gaps, hyphenated line ends are joined.
+- Figures of text pages are cut out: the bounding boxes of images and of vector paths (from `constructPath`, through
+  the transformation matrices) are merged when closer than 16 pt; regions of at least 40×30 pt and 1.2 % of the page
+  that contain more than hairlines become figures (page backgrounds and rules alone are ignored). The nearest line
+  starting with "Figure/Fig./Table/Figura/Tabella… N" just below or above (same column) is the caption. Each figure is
+  cut from a ≈ 180 dpi rendering (`figures/pNNN-K.webp`), listed at the end of its page in the Markdown and returned
+  by `read_reference_figures` (up to 12 per page, 300 per document).
+- Conversions run in a worker thread (one long-lived `worker_threads` worker; TypeScript through `tsx`), so the server
+  stays responsive; background conversions emit their live events as "server", so the window that uploaded the file
+  sees the result without reloading. `manifest.revision` records the conversion logic version: content produced by an
+  older one is converted again automatically.
+- Image sub-blocks can take an image file of the references or a figure of a document ("From references…" in the
+  block, "Insert into a section…" in the figure inspector and on image files, `add_image_from_reference` via MCP). The
+  image is **copied** into the section's `assets/` (the sub-block keeps working when the reference changes or is
+  reconverted, and exports need nothing new); its caption defaults to the figure's, and the source file is attached
+  to the sub-block (📎) to keep track of where it comes from. Bibliography associations stay manual.
+- No OCR: the assistant reads page images directly (better on tables, formulas, handwriting) and can store what it read
+  with `save_reference_transcription`, which replaces that page's text (marked as transcribed). Limits: layouts in
+  columns may interleave; spreadsheet sheets are capped at 1000 rows × 40 columns; ZIPs include up to 200 files, one
+  level deep; `.ppt`/`.xls` (old binary formats) are not readable.
+
 ## Known limitations
-- References cannot be moved between folders (rename only); links from Markdown are not updated on rename.
+- References cannot be moved between folders (rename only).
 - Excalidraw appState is saved as-is (includes view state such as scroll/zoom).

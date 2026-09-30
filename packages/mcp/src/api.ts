@@ -4,6 +4,8 @@ export interface SourcebookApi {
   json<T = unknown>(method: string, path: string, body?: unknown): Promise<T>;
   /** Raw text response (Markdown export, reference files). */
   text(path: string): Promise<{ text: string; contentType: string; size: number }>;
+  /** Binary response (page images), base64-encoded. */
+  bytes(path: string): Promise<{ base64: string; contentType: string }>;
 }
 
 export class ApiError extends Error {
@@ -60,6 +62,11 @@ export function httpApi(baseUrl: string, fetchImpl: typeof fetch = fetch, transp
       if (!res.ok) throw errorFrom(res.status, raw);
       return { text: raw, contentType: res.headers.get("content-type") ?? "", size: Number(res.headers.get("content-length") ?? raw.length) };
     },
+    async bytes(path) {
+      const res = await call("GET", path);
+      if (!res.ok) throw errorFrom(res.status, await res.text());
+      return { base64: Buffer.from(await res.arrayBuffer()).toString("base64"), contentType: res.headers.get("content-type") ?? "" };
+    },
   };
 }
 
@@ -70,7 +77,7 @@ export interface Injectable {
     url: string;
     payload?: string;
     headers?: Record<string, string>;
-  }): Promise<{ statusCode: number; body: string; headers: Record<string, unknown> }>;
+  }): Promise<{ statusCode: number; body: string; rawPayload?: Buffer; headers: Record<string, unknown> }>;
 }
 
 export function injectApi(app: Injectable, transport: McpTransport = "http"): SourcebookApi {
@@ -91,6 +98,11 @@ export function injectApi(app: Injectable, transport: McpTransport = "http"): So
       const res = await call("GET", path);
       if (res.statusCode >= 400) throw errorFrom(res.statusCode, res.body);
       return { text: res.body, contentType: String(res.headers["content-type"] ?? ""), size: Number(res.headers["content-length"] ?? res.body.length) };
+    },
+    async bytes(path) {
+      const res = await call("GET", path);
+      if (res.statusCode >= 400) throw errorFrom(res.statusCode, res.body);
+      return { base64: (res.rawPayload ?? Buffer.from(res.body, "binary")).toString("base64"), contentType: String(res.headers["content-type"] ?? "") };
     },
   };
 }

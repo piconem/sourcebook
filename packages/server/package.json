@@ -11,22 +11,35 @@
   "dependencies": {
     "@fastify/multipart": "^10.1.2",
     "@fastify/static": "^10.1.4",
+    "@joplin/turndown-plugin-gfm": "^1.0.68",
+    "@kenjiuno/msgreader": "^1.28.0",
     "@modelcontextprotocol/sdk": "^1.30.1",
+    "@napi-rs/canvas": "1.0.9",
     "@sourcebook/mcp": "workspace:*",
     "@sourcebook/shared": "workspace:*",
+    "@xmldom/xmldom": "^0.9.12",
+    "exceljs": "^4.4.0",
     "fastify": "^5.12.5",
     "fastify-type-provider-zod": "^7.0.0",
     "fflate": "^0.8.3",
+    "mailparser": "^3.9.31",
+    "mammoth": "^1.13.0",
     "nanoid": "^6.0.1",
+    "pdfjs-dist": "^6.3.289",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
+    "turndown": "^7.2.4",
     "unified": "^11.0.5",
+    "word-extractor": "^1.0.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.9.0",
     "@types/mdast": "^4.0.4",
+    "@types/turndown": "^5.0.6",
+    "pdf-lib": "^1.17.1",
     "tsx": "^4.23.15"
   }
 }

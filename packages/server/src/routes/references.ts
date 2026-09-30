@@ -1,5 +1,13 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import {
+  ConvertReferencesBodySchema,
+  RenderPagesBodySchema,
+  TranscriptionBodySchema,
+  mcpKindOf,
+  type ReferenceNode,
+  AttachReferencesBodySchema,
+  BlockIdParamsSchema,
+  SubBlockParamsSchema,
   CreateReferenceFolderBodySchema,
   ReferencePathsBodySchema,
   ZipReferencesBodySchema,
@@ -12,7 +20,8 @@ import { createReadStream } from "node:fs";
 import { PassThrough } from "node:stream";
 import { basename, extname } from "node:path";
 import { z } from "zod";
-import { badRequest } from "../errors.js";
+import { badRequest, notFound } from "../errors.js";
+import { validatePath } from "../store/ReferencesStore.js";
 
 const MAX_UPLOAD = 100 * 1024 * 1024;
 
@@ -72,6 +81,84 @@ export const referenceRoutes =
       },
     );
 
+    // ---- content for the assistant (Markdown conversions, page images) ----
+
+    /** Files at these paths (folders expanded). */
+    const filesUnder = async (refs: { tree(): Promise<ReferenceNode> }, paths: string[]) => {
+      const wanted = paths.map(validatePath);
+      const out: string[] = [];
+      const walk = (n: ReferenceNode, inside: boolean) => {
+        const hit = inside || wanted.includes(n.path);
+        if (n.kind === "file" && hit) out.push(n.path);
+        n.children?.forEach((c) => walk(c, hit));
+      };
+      walk(await refs.tree(), wanted.includes(""));
+      return out;
+    };
+
+    /** Converts files (or the files of folders) now; `force` converts again even when up to date. */
+    app.post("/references/mcp/convert", { schema: { body: ConvertReferencesBodySchema } }, async (req) => {
+      const files = await filesUnder(req.nb.refs, req.body.paths);
+      const results = [];
+      for (const path of files.filter((f) => mcpKindOf(f) === "convertible")) results.push({ path, ...(await req.nb.refs.mcp.convert(path, { force: req.body.force })) });
+      return { results };
+    });
+
+    /** Stored content of a file: MCP status, manifest and Markdown (404 when not converted). */
+    app.get("/references/mcp", { schema: { querystring: ReferencePathQuerySchema } }, async (req) => {
+      const path = validatePath(req.query.path);
+      await req.nb.refs.file(path);
+      const content = await req.nb.refs.mcp.content(path);
+      if (!content) throw notFound(`Converted content of ${path}`);
+      return { info: await req.nb.refs.mcp.info(path), ...content };
+    });
+
+    app.delete("/references/mcp", { schema: { querystring: ReferencePathQuerySchema } }, async (req, reply) => {
+      await req.nb.refs.mcp.remove([validatePath(req.query.path)]);
+      req.nb.refs.onChange();
+      reply.code(204);
+    });
+
+    app.get(
+      "/references/mcp/page",
+      { schema: { querystring: z.object({ path: z.string().min(1), n: z.coerce.number().int().positive() }) } },
+      async (req, reply) => {
+        const file = await req.nb.refs.mcp.pageImage(validatePath(req.query.path), req.query.n);
+        if (!file) throw notFound(`Image of page ${req.query.n}`);
+        return reply.type("image/webp").header("cache-control", "no-cache").send(createReadStream(file));
+      },
+    );
+
+    app.get(
+      "/references/mcp/figure",
+      { schema: { querystring: z.object({ path: z.string().min(1), id: z.string().regex(/^p\d+-\d+$/) }) } },
+      async (req, reply) => {
+        const file = await req.nb.refs.mcp.figureImage(validatePath(req.query.path), req.query.id);
+        if (!file) throw notFound(`Figure ${req.query.id}`);
+        return reply.type("image/webp").header("cache-control", "no-cache").send(createReadStream(file));
+      },
+    );
+
+    app.post("/references/mcp/pages", { schema: { body: RenderPagesBodySchema } }, async (req) => ({
+      manifest: await req.nb.refs.mcp.renderPages(validatePath(req.body.path), req.body.pages),
+    }));
+
+    app.put("/references/mcp/transcription", { schema: { body: TranscriptionBodySchema } }, async (req) => ({
+      manifest: await req.nb.refs.mcp.saveTranscription(validatePath(req.body.path), req.body.page, req.body.markdown, req.body.by ?? "the assistant"),
+    }));
+
+    /** An image reference scaled for the assistant (longest side ≤ 1568 px, WebP). */
+    app.get("/references/mcp/image", { schema: { querystring: ReferencePathQuerySchema } }, async (req, reply) => {
+      const { abs } = await req.nb.refs.file(req.query.path);
+      if (mcpKindOf(abs) !== "image") throw badRequest("Not an image");
+      const { loadImage, createCanvas } = await import("@napi-rs/canvas");
+      const img = await loadImage(abs);
+      const scale = Math.min(1, 1568 / Math.max(img.width, img.height));
+      const canvas = createCanvas(Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      return reply.type("image/webp").send(await canvas.encode("webp", 85));
+    });
+
     app.post("/references/upload", { schema: { querystring: UploadReferencesQuerySchema } }, async (req, reply) => {
       const saved: string[] = [];
       for await (const part of req.files({ limits: { fileSize: MAX_UPLOAD, files: 100 } })) {
@@ -89,9 +176,37 @@ export const referenceRoutes =
       return { path: await req.nb.refs.createFolder(req.body.path) };
     });
 
-    app.patch("/references/rename", { schema: { body: RenameReferenceBodySchema } }, async (req) => ({
-      path: await req.nb.refs.rename(req.body.path, req.body.newName),
+    // Renames move associations and Markdown links along with the file or folder.
+    app.patch("/references/rename", { schema: { body: RenameReferenceBodySchema } }, async (req) => {
+      const from = validatePath(req.body.path);
+      const path = await req.nb.refs.rename(req.body.path, req.body.newName);
+      if (path !== from) await req.nb.store.renameReferencePath(from, path);
+      return { path };
+    });
+
+    /** Where a file (or anything inside a folder) is associated or linked. */
+    app.get("/references/usages", { schema: { querystring: ReferencePathQuerySchema } }, async (req) =>
+      req.nb.store.referenceUsages(validatePath(req.query.path)),
+    );
+
+    // ---- associations with whole sections / sub-blocks ----
+    const checkPaths = async (refs: { file(p: string): Promise<unknown> }, paths: string[]) => {
+      const normalized = paths.map(validatePath);
+      const missing: string[] = [];
+      for (const p of normalized) await refs.file(p).catch(() => missing.push(p));
+      if (missing.length) throw badRequest(`Unknown reference file(s): ${missing.join(", ")}`);
+      return normalized;
+    };
+    app.put("/blocks/:id/references", { schema: { params: BlockIdParamsSchema, body: AttachReferencesBodySchema } }, async (req) => ({
+      paths: await req.nb.store.setReferences(req.params.id, null, await checkPaths(req.nb.refs, req.body.paths)),
     }));
+    app.put(
+      "/blocks/:blockId/subblocks/:subBlockId/references",
+      { schema: { params: SubBlockParamsSchema, body: AttachReferencesBodySchema } },
+      async (req) => ({
+        paths: await req.nb.store.setReferences(req.params.blockId, req.params.subBlockId, await checkPaths(req.nb.refs, req.body.paths)),
+      }),
+    );
 
     /**
      * Streams a ZIP of the selected files/folders (entries relative to `base`), reading one file at a time
@@ -125,12 +240,16 @@ export const referenceRoutes =
       return reply.send(out);
     });
 
-    app.post("/references/delete", { schema: { body: ReferencePathsBodySchema } }, async (req) => ({
-      deleted: await req.nb.refs.deleteMany(req.body.paths),
-    }));
+    // Deleting drops the associations of the deleted files; links in text stay (shown as missing).
+    app.post("/references/delete", { schema: { body: ReferencePathsBodySchema } }, async (req) => {
+      const deleted = await req.nb.refs.deleteMany(req.body.paths);
+      await req.nb.store.removeReferencePaths(deleted);
+      return { deleted };
+    });
 
     app.delete("/references", { schema: { querystring: ReferencePathQuerySchema } }, async (req, reply) => {
       await req.nb.refs.delete(req.query.path);
+      await req.nb.store.removeReferencePaths([validatePath(req.query.path)]);
       reply.code(204);
     });
   };

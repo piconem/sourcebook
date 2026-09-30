@@ -11,6 +11,7 @@ import { HttpError } from "./errors.js";
 import { requestContext } from "./requestContext.js";
 import { createServerRegistry } from "./registry.js";
 import { assetRoutes } from "./routes/assets.js";
+import { bibliographyRoutes } from "./routes/bibliography.js";
 import { blockRoutes } from "./routes/blocks.js";
 import { commentRoutes } from "./routes/comments.js";
 import { mcpRoutes } from "./routes/mcp.js";
@@ -19,6 +20,7 @@ import { SettingsStore } from "./store/SettingsStore.js";
 import { MCP_TRANSPORT_HEADER } from "@sourcebook/shared";
 import { projectRoutes } from "./routes/project.js";
 import { referenceRoutes } from "./routes/references.js";
+import { referenceImageRoutes } from "./routes/referenceImages.js";
 import { subBlockRoutes } from "./routes/subblocks.js";
 import { workspaceRoutes } from "./routes/workspace.js";
 import { UserStore } from "./store/UserStore.js";
@@ -101,6 +103,8 @@ export async function buildApp(workspaceDir: string, opts: { logger?: boolean; c
         await scoped.register(subBlockRoutes());
         await scoped.register(assetRoutes());
         await scoped.register(referenceRoutes());
+        await scoped.register(referenceImageRoutes());
+        await scoped.register(bibliographyRoutes());
         await scoped.register(commentRoutes(users));
       },
       { prefix: `/api/${kind}/:projectId` },

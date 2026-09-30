@@ -34,6 +34,8 @@ packages/mcp      MCP server for LLM assistants (tools, resources, prompts; stdi
       project.json              name, description, createdAt, createdFrom?
       notebook.json             ordered index: id, title, parentId, order, folder
       references/               project input files of any type, user-defined folders (read-only in the app)
+        .mcp/<file path>/       generated for the assistant: content.md, manifest.json, pages/p001.webp…
+      bibliography.json         citable sources (key, type, name, authors, year, venue, title, DOI, link, BibTeX…)
       blocks/
         001-introduction/
           block.json            id, title, parentId, order, objective?, ordered sub-block refs
@@ -98,7 +100,28 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | PATCH | `…/references/rename` | `{ path, newName }` |
 | DELETE | `…/references?path=…` | file or folder (recursive) |
 | POST | `…/references/zip` | `{ paths, base? }` → streamed ZIP (folders included recursively) |
-| POST | `…/references/delete` | `{ paths }` → `{ deleted }` |
+| POST | `…/references/delete` | `{ paths }` → `{ deleted }` — attachments of deleted files are removed |
+| POST | `…/references/mcp/convert` | `{ paths, force? }` → `{ results: [{ path, status, parts?, pageImages?, imageOnlyParts?, error? }] }` — converts documents (folders expanded) to Markdown for the assistant now (otherwise automatic) |
+| GET / DELETE | `…/references/mcp?path=…` | converted content `{ info, manifest, markdown }` · delete the generated files |
+| POST | `…/references/mcp/pages` | `{ path, pages: "all" \| [n…] }` — render PDF page images |
+| GET | `…/references/mcp/page?path=…&n=…` | a rendered page image (WebP) |
+| GET | `…/references/mcp/figure?path=…&id=p3-1` | a figure cut out of a PDF page (WebP) |
+| GET | `…/references/images` | `{ images: [{ path, name, size }], documents: [{ path, name, figures }] }` — image files and document figures usable in image sub-blocks |
+| POST | `…/blocks/:id/assets/from-reference` | `{ path, figure?, attachTo? }` → `{ path, url, alt, caption }` — copies an image reference or a figure into the block's assets (attaching the source file to sub-block `attachTo`) |
+| POST | `…/blocks/:id/images/from-reference` | `{ path, figure?, caption?, alt?, title?, position? }` — a new image sub-block from an image reference or a figure, with the source attached |
+| PUT | `…/references/mcp/transcription` | `{ path, page, markdown, by? }` — replace a page's text with a transcription |
+| GET | `…/references/usages?path=…` | where a file (or the files of a folder) is attached or linked: `[{ path, kind: section\|subblock\|text, blockId, subBlockId?, ref, title }]` |
+| PUT | `…/blocks/:id/references` · `…/blocks/:blockId/subblocks/:subBlockId/references` | `{ paths }` — reference files attached to the whole section / sub-block (400 on missing files). Renaming a file or folder updates attachments and Markdown links |
+| GET / POST | `…/bibliography` | list (`?q=&type=`) / create `{ type, name, key?, authors?, year?, venue?, title?, abstract?, description?, doi?, url?, textCitation?, bibtex?, generate? }` — without `key` one is derived (or taken from `bibtex`); `generate: true` fills a missing BibTeX and text citation |
+| GET / PATCH / DELETE | `…/bibliography/:key` | PATCH any field, `key` to rename (updates every `bib:` link and association) · DELETE → 409 `{ details: { usages } }` if used, `?force=true` removes the associations |
+| GET | `…/bibliography/:key/usages` | `[{ kind: section\|subblock\|text, blockId, subBlockId?, ref, title }]` |
+| POST | `…/bibliography/import` | `{ bibtex, onDuplicate: skip\|replace }` → `{ created, replaced, skipped, errors }` |
+| POST | `…/bibliography/generate` | fields → `{ bibtex, textCitation }` (nothing saved) |
+| GET | `…/bibliography.bib` | all entries as BibTeX |
+| PUT | `…/blocks/:id/citations` · `…/blocks/:blockId/subblocks/:subBlockId/citations` | `{ keys }` — sources associated with the whole section / sub-block (400 on unknown keys) |
+
+Citations in Markdown text are links `[Name](bib:key)`. The combined export turns them into links to a final
+**References** section (text citations of every cited or associated source) and the ZIP adds `bibliography.bib`.
 
 Anchored comments are returned with `resolved: { lines: { first, last } }` — where their text is now in the
 source file — or `resolved: null` when the text is gone (detached).
@@ -142,19 +165,33 @@ Environment: `SOURCEBOOK_URL` (stdio, default `http://127.0.0.1:4000`), `SOURCEB
 reference files prepares a ready-to-paste request (brainstorming, critique, build/fill, improve/rewrite, comment, or
 your own prompt) that points the assistant at exactly that element.
 
+**Reference documents**: files the assistant cannot read as they are — PDF, Word (`.docx`, `.doc`), PowerPoint
+(`.pptx`), Excel (`.xlsx`), OpenDocument (`.odt/.odp/.ods`), RTF, EPUB, HTML, Jupyter, email (`.eml/.msg`) and ZIP —
+are converted to Markdown automatically (in Node, locally), split into pages/slides/sheets. PDF pages without usable
+text (scans, figures, diagrams) are also rendered as images, which the assistant reads with `read_reference_pages`
+and can transcribe back into the text; figures of PDF pages (images, charts, diagrams) are cut out with their captions
+(`read_reference_figures`). Conversions run in a background worker thread. The References view shows an "Assistant" status per file and lets you inspect,
+reconvert or delete the generated content.
+
 **References** you can use in the conversation (the 🔗 buttons in the editor copy them):
 `§2.1` section · `§2.1#3` 3rd sub-block of §2.1 · `§2.1#3:L10-14` its source lines · `§2.1#3 "quoted text"` ·
 ids and `sourcebook://projects/<id>/subblocks/<id>` URIs.
 
 **Tools**: `list_workspace`, `get_outline`, `read_section`, `read_subblock`, `read_document`, `search`, `list_references`,
-`read_reference`, `list_comments` · `create_project`, `create_template`, `create_section`, `add_subblock`,
+`read_reference` (text as it is, images as images, documents as converted Markdown, by `parts`), `read_reference_pages`
+(PDF pages as images), `read_reference_figures` (figures cut out of PDFs, with captions), `list_comments` · `save_reference_transcription` · `create_project`, `create_template`, `create_section`, `add_subblock`,
 `update_section`, `update_subblock`, `edit_subblock_text` (find/replace or line ranges, atomic), `move_section`,
-`move_subblock` · `add_comment`, `reply_to_comment`, `reanchor_comment` · destructive (the client asks first):
-`delete_section`, `delete_subblock`, `delete_comment`. Prompts: `review-section`, `fill-placeholders`, `discuss-comments`.
+`move_subblock` · `add_image_from_reference` (an image file or a PDF figure as an image sub-block) · `add_comment`,
+`reply_to_comment`, `reanchor_comment` · `attach_reference` / `detach_reference`
+(reference files of a whole section or sub-block) · bibliography: `list_bibliography`,
+`read_bib_entry`, `export_bibtex`, `add_bib_entry`, `update_bib_entry`, `import_bibtex`, `cite` / `uncite` (associate
+sources with a section or sub-block; in text the assistant writes `[Name](bib:key)` with `edit_subblock_text`) ·
+destructive (the client asks first): `delete_section`, `delete_subblock`, `delete_comment`, `delete_bib_entry`. Prompts: `review-section`, `fill-placeholders`, `discuss-comments`.
 
 Examples: *"Show me the outline of the payment-service project"*, *"Rewrite §2.1#1 more concisely"*,
 *"Comment §3.2#2:L4-6: the timeout is not handled"*, *"Answer the open comments in §4"*,
-*"Create a project from the thesis template and fill in the introduction with me"*.
+*"Create a project from the thesis template and fill in the introduction with me"*,
+*"Add this BibTeX to the bibliography and cite it in §2.1#1 where we discuss the protocol"*.
 
 ## Adding a sub-block type
 1. `packages/shared/src/types/<type>.ts`: a `SubBlockTypeCore` (zod content schema, source extension,

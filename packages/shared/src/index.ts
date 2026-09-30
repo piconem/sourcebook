@@ -4,3 +4,6 @@ export * from "./types/index.js";
 export * from "./languages.js";
 export * from "./anchors.js";
 export * from "./outline.js";
+export * from "./bibliography.js";
+export * from "./referenceLinks.js";
+export * from "./mcpContent.js";

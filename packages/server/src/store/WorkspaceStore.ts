@@ -1,3 +1,4 @@
+import { MCP_DIR } from "./McpContentStore.js";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -18,6 +19,7 @@ import { readJson, writeJsonAtomic } from "../fs/atomic.js";
 import { Mutex } from "../fs/mutex.js";
 import { slugify } from "../fs/names.js";
 import { NOTEBOOK_FILE, NotebookStore } from "./NotebookStore.js";
+import { BibliographyStore } from "./BibliographyStore.js";
 import { ReferencesStore } from "./ReferencesStore.js";
 import { validateTemplateArchive, type ArchiveValidation } from "./templateArchive.js";
 
@@ -29,6 +31,7 @@ export interface NotebookContext {
   id: string;
   store: NotebookStore;
   refs: ReferencesStore;
+  bib: BibliographyStore;
 }
 
 /** Not carried over when a project/template is copied. */
@@ -116,6 +119,8 @@ export class WorkspaceStore {
         const srcMeta = await this.meta(body.from.kind, body.from.id);
         await cp(src, dir, {
           recursive: true,
+          // Keeps converted reference content valid (it is checked against file size and time).
+          preserveTimestamps: true,
           filter: (p) => !isCommentsFile(p) && basename(p) !== PROJECT_FILE && !basename(p).includes(".tmp"),
         });
         createdFrom = { kind: body.from.kind, id: body.from.id, name: srcMeta.name };
@@ -164,6 +169,8 @@ export class WorkspaceStore {
       for (const e of (await readdir(join(root, rel), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
         const r = rel ? `${rel}/${e.name}` : e.name;
         if (e.name.startsWith(".tmp") || e.name.endsWith(".tmp") || isCommentsFile(e.name)) continue;
+        // Generated Markdown/page images of references: rebuilt automatically after import.
+        if (r === `references/${MCP_DIR}`) continue;
         if (e.isDirectory()) await walk(r);
         else if (e.isFile()) out.push({ name: r, abs: join(root, r) });
       }
@@ -216,7 +223,7 @@ export class WorkspaceStore {
         store.displayName = (await this.meta(kind, id)).name;
         const refs = new ReferencesStore(dir);
         refs.onChange = () => store.notify({ type: "references" });
-        return { kind, id, store, refs };
+        return { kind, id, store, refs, bib: new BibliographyStore(dir, store) };
       })();
       this.open_.set(key, ctx);
       ctx.catch(() => this.open_.delete(key));

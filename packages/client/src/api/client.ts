@@ -1,5 +1,16 @@
 import { filenameFrom } from "../download";
 import type {
+  AssetFromReferenceResult,
+  ReferenceImageSource,
+  ReferenceImages,
+  McpContent,
+  McpInfo,
+  McpManifest,
+  BibEntry,
+  BibUsage,
+  CreateBibEntryBody,
+  ImportBibResult,
+  UpdateBibEntryBody,
   Block,
   BlockDeletionImpact,
   CreateProjectBody,
@@ -172,6 +183,31 @@ export const api = {
   renameReference: (path: string, newName: string) =>
     request<{ path: string }>("PATCH", `${nbBase}/references/rename`, { path, newName }),
   deleteReference: (path: string) => request<void>("DELETE", `${nbBase}/references?path=${encodeURIComponent(path)}`),
+  // ---- images from references (image files, figures of documents) ----
+  getReferenceImages: () => request<ReferenceImages>("GET", `${nbBase}/references/images`),
+  /** Copies an image reference or figure into the block's assets (attaching the source to `attachTo`). */
+  assetFromReference: (blockId: string, source: ReferenceImageSource, attachTo?: string) =>
+    request<AssetFromReferenceResult>("POST", `${nbBase}/blocks/${blockId}/assets/from-reference`, { ...source, ...(attachTo ? { attachTo } : {}) }),
+  /** A new image sub-block from an image reference or figure. */
+  imageFromReference: (blockId: string, body: ReferenceImageSource & { caption?: string; alt?: string; title?: string; position?: number }) =>
+    request<SubBlock>("POST", `${nbBase}/blocks/${blockId}/images/from-reference`, body),
+
+  // ---- content for the assistant (Markdown conversions, page images) ----
+  /** Converts files (folders expanded) now; `force` converts again even when up to date. */
+  convertReferences: (paths: string[], force = false) =>
+    request<{ results: (McpInfo & { path: string })[] }>("POST", `${nbBase}/references/mcp/convert`, { paths, force }),
+  getMcpContent: (path: string) =>
+    request<McpContent & { info: McpInfo }>("GET", `${nbBase}/references/mcp?path=${encodeURIComponent(path)}`),
+  deleteMcpContent: (path: string) => request<void>("DELETE", `${nbBase}/references/mcp?path=${encodeURIComponent(path)}`),
+  renderPageImages: (path: string, pages: "all" | number[]) =>
+    request<{ manifest: McpManifest }>("POST", `${nbBase}/references/mcp/pages`, { path, pages }),
+
+  /** Where a file (or the files of a folder) is associated or linked. */
+  getReferenceUsages: (path: string) =>
+    request<(Omit<BibUsage, "kind"> & { kind: BibUsage["kind"]; path: string })[]>("GET", `${nbBase}/references/usages?path=${encodeURIComponent(path)}`),
+  /** Reference files associated with a whole section (`subBlockId` null) or sub-block. */
+  setAttachedReferences: (blockId: string, subBlockId: string | null, paths: string[]) =>
+    request<{ paths: string[] }>("PUT", `${nbBase}/blocks/${blockId}${subBlockId ? `/subblocks/${subBlockId}` : ""}/references`, { paths }),
   deleteReferences: (paths: string[]) => request<{ deleted: string[] }>("POST", `${nbBase}/references/delete`, { paths }),
   /** ZIP of files/folders, entries relative to `base`. Returns the archive and its suggested name. */
   async zipReferences(paths: string[], base: string): Promise<{ blob: Blob; name: string }> {
@@ -199,6 +235,27 @@ export const api = {
     return res.json();
   },
 
+  // ---- bibliography ----
+  getBibliography: () => request<BibEntry[]>("GET", `${nbBase}/bibliography`),
+  createBibEntry: (body: CreateBibEntryBody) => request<BibEntry>("POST", `${nbBase}/bibliography`, body),
+  updateBibEntry: (key: string, body: UpdateBibEntryBody) =>
+    request<BibEntry>("PATCH", `${nbBase}/bibliography/${encodeURIComponent(key)}`, body),
+  /** 409 with `details.usages` when the entry is used, unless `force`. */
+  deleteBibEntry: (key: string, force = false) =>
+    request<{ removedAssociations: number }>("DELETE", `${nbBase}/bibliography/${encodeURIComponent(key)}?force=${force}`),
+  getBibUsages: (key: string) => request<BibUsage[]>("GET", `${nbBase}/bibliography/${encodeURIComponent(key)}/usages`),
+  importBibtex: (bibtex: string, onDuplicate: "skip" | "replace") =>
+    request<ImportBibResult>("POST", `${nbBase}/bibliography/import`, { bibtex, onDuplicate }),
+  async exportBibtex(): Promise<string> {
+    const res = await apiFetch(`${nbBase}/bibliography.bib`);
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    return res.text();
+  },
+  setSectionCitations: (blockId: string, keys: string[]) =>
+    request<{ keys: string[] }>("PUT", `${nbBase}/blocks/${blockId}/citations`, { keys }),
+  setSubBlockCitations: (blockId: string, subBlockId: string, keys: string[]) =>
+    request<{ keys: string[] }>("PUT", `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}/citations`, { keys }),
+
   async uploadAsset(blockId: string, file: File): Promise<UploadAssetResponse> {
     const form = new FormData();
     form.append("file", file);
@@ -219,6 +276,12 @@ const encodePath = (path: string) => path.split("/").map(encodeURIComponent).joi
 /** URL serving a reference file (inline, or as a download). */
 export const referenceUrl = (path: string, download = false) =>
   `${nbBase}/references/file/${encodePath(path)}${download ? "?download=1" : ""}`;
+
+/** URL of a rendered page image of a converted reference (`v` busts the cache after re-rendering). */
+export const mcpPageUrl = (path: string, n: number, v = "") => `${nbBase}/references/mcp/page?path=${encodeURIComponent(path)}&n=${n}${v ? `&v=${encodeURIComponent(v)}` : ""}`;
+
+/** URL of a figure cut out of a converted PDF reference. */
+export const mcpFigureUrl = (path: string, id: string, v = "") => `${nbBase}/references/mcp/figure?path=${encodeURIComponent(path)}&id=${id}${v ? `&v=${encodeURIComponent(v)}` : ""}`;
 
 /** Link target for a reference from a Markdown sub-block (relative to blocks/NNN/subblocks/). */
 export const referenceHrefFromSubBlock = (path: string) => `../../../references/${encodePath(path)}`;

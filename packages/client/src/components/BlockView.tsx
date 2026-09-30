@@ -7,6 +7,8 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { api, notebookUri } from "../api/client";
 import { CopyReferenceButton } from "./CopyReferenceButton";
 import { AskAiButton } from "../ai/AskAiButton";
+import { CitationsButton } from "../bibliography/CitationsButton";
+import { AttachmentsButton } from "../references/AttachmentsButton";
 import { keys, useBlock } from "../api/queries";
 import { registry } from "../subblocks";
 import { CommentsPanel } from "../comments/CommentsPanel";
@@ -138,6 +140,8 @@ export function BlockView({
         {number && <span className="block-number">{number}</span>}
         <CopyReferenceButton text={`${number ? `§${number} ` : ""}${notebookUri(`sections/${blockId}`)}`} label={number ? `§${number}` : undefined} />
         <AskAiButton target={() => ({ kind: "section", number: number ?? "?", id: blockId, title: block.title })} />
+        <CitationsButton blockId={blockId} citations={block.citations} />
+        <AttachmentsButton blockId={blockId} paths={block.references} />
         <input
           className="block-title"
           value={title}

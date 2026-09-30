@@ -35,6 +35,15 @@ import {
   type SubBlockTypeCore,
   type UpdateBlockBody,
   type UpdateSubBlockBody,
+  type BibUsage,
+  citedKeys,
+  isUnderReference,
+  linkedReferences,
+  movedReferencePath,
+  renameReferenceLinks,
+  outlineNumbers,
+  renameCitations,
+  withDepth,
 } from "@sourcebook/shared";
 import { HttpError, badRequest, notFound } from "../errors.js";
 import { currentOrigin } from "../requestContext.js";
@@ -133,11 +142,216 @@ export class NotebookStore {
       id,
       title: meta.title,
       objective: meta.objective,
+      citations: meta.citations,
+      references: meta.references,
       parentId: meta.parentId,
       order: meta.order,
       folder: entry.folder,
       subBlocks,
     };
+  }
+
+  // ---------------------------------------------------------------- bibliography links
+
+  /** Associates bibliography keys with a whole section (replaces the list; [] removes all). */
+  setSectionCitations(blockId: string, keys: string[]): Promise<string[]> {
+    return this.mutex.run(async () => {
+      const entry = this.entry(blockId);
+      const meta = this.meta(blockId);
+      meta.citations = keys.length ? [...new Set(keys)] : undefined;
+      await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+      this.notify({ type: "block", blockId });
+      return meta.citations ?? [];
+    });
+  }
+
+  /** Associates bibliography keys with a whole sub-block (replaces the list). */
+  setSubBlockCitations(blockId: string, subBlockId: string, keys: string[]): Promise<string[]> {
+    return this.mutex.run(async () => {
+      const entry = this.entry(blockId);
+      const meta = this.meta(blockId);
+      const ref = this.subRef(meta, subBlockId);
+      ref.citations = keys.length ? [...new Set(keys)] : undefined;
+      await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+      this.notify({ type: "block", blockId, subBlockId });
+      return ref.citations ?? [];
+    });
+  }
+
+  /** Where a bibliography key is used: associated sections/sub-blocks and sub-blocks citing it in their text. */
+  async citationUsages(key?: string): Promise<(BibUsage & { key: string })[]> {
+    const numbers = outlineNumbers(withDepth(this.index.blocks));
+    const out: (BibUsage & { key: string })[] = [];
+    for (const entry of this.index.blocks) {
+      const meta = this.meta(entry.id);
+      const num = numbers.get(entry.id);
+      for (const k of meta.citations ?? []) if (!key || k === key) out.push({ key: k, kind: "section", blockId: entry.id, ref: `§${num}`, title: meta.title });
+      for (const [i, ref] of meta.subBlocks.entries()) {
+        const label = `§${num}#${i + 1}`;
+        const title = ref.title ?? `${ref.type} ${i + 1}`;
+        for (const k of ref.citations ?? []) if (!key || k === key) out.push({ key: k, kind: "subblock", blockId: entry.id, subBlockId: ref.id, ref: label, title });
+        const source = await this.sourceText(entry.folder, ref);
+        for (const k of source ? citedKeys(source) : []) if (!key || k === key) out.push({ key: k, kind: "text", blockId: entry.id, subBlockId: ref.id, ref: label, title });
+      }
+    }
+    return out;
+  }
+
+  /** Renames a key in associations and in every bib: link of the sources (content changes bump rev). */
+  renameCitationKey(oldKey: string, newKey: string): Promise<void> {
+    return this.mutex.run(async () => {
+      for (const entry of this.index.blocks) {
+        const meta = this.meta(entry.id);
+        let metaChanged = false;
+        const swap = (list?: string[]) => {
+          if (!list?.includes(oldKey)) return list;
+          metaChanged = true;
+          return [...new Set(list.map((k) => (k === oldKey ? newKey : k)))];
+        };
+        meta.citations = swap(meta.citations);
+        for (const ref of meta.subBlocks) {
+          ref.citations = swap(ref.citations);
+          const source = await this.sourceText(entry.folder, ref);
+          if (source && citedKeys(source).includes(oldKey)) {
+            const def = this.typeOf(ref.type);
+            const content = def.deserialize(renameCitations(source, oldKey, newKey), undefined, { sourceExt: extname(ref.source).slice(1) });
+            await this.applySubBlockUpdate(entry.id, ref.id, { content });
+          }
+        }
+        if (metaChanged) {
+          await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+          this.notify({ type: "block", blockId: entry.id });
+        }
+      }
+    });
+  }
+
+  /** Removes a key from every association (bib: links in text are left as they are). */
+  removeCitationKey(key: string): Promise<void> {
+    return this.mutex.run(async () => {
+      for (const entry of this.index.blocks) {
+        const meta = this.meta(entry.id);
+        let changed = false;
+        const drop = (list?: string[]) => {
+          if (!list?.includes(key)) return list;
+          changed = true;
+          const rest = list.filter((k) => k !== key);
+          return rest.length ? rest : undefined;
+        };
+        meta.citations = drop(meta.citations);
+        for (const ref of meta.subBlocks) ref.citations = drop(ref.citations);
+        if (changed) {
+          await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+          this.notify({ type: "block", blockId: entry.id });
+        }
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------- reference file links
+
+  /** Associates reference files with a whole section, or a sub-block (replaces the list; [] removes all). */
+  setReferences(blockId: string, subBlockId: string | null, paths: string[]): Promise<string[]> {
+    return this.mutex.run(async () => {
+      const entry = this.entry(blockId);
+      const meta = this.meta(blockId);
+      const target = subBlockId ? this.subRef(meta, subBlockId) : meta;
+      target.references = paths.length ? [...new Set(paths)] : undefined;
+      await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+      this.notify({ type: "block", blockId, ...(subBlockId ? { subBlockId } : {}) });
+      return target.references ?? [];
+    });
+  }
+
+  /** Adds reference files to those attached to a section or sub-block (keeping the others). */
+  async attachReferences(blockId: string, subBlockId: string | null, paths: string[]): Promise<string[]> {
+    const meta = this.meta(blockId);
+    const current = (subBlockId ? this.subRef(meta, subBlockId).references : meta.references) ?? [];
+    return this.setReferences(blockId, subBlockId, [...current, ...paths]);
+  }
+
+  /** Where reference files are used: associated sections/sub-blocks and Markdown links (optionally for one path). */
+  async referenceUsages(path?: string): Promise<(Omit<BibUsage, "kind"> & { kind: BibUsage["kind"]; path: string })[]> {
+    const numbers = outlineNumbers(withDepth(this.index.blocks));
+    const out: (Omit<BibUsage, "kind"> & { kind: BibUsage["kind"]; path: string })[] = [];
+    const wanted = (p: string) => !path || isUnderReference(p, path);
+    for (const entry of this.index.blocks) {
+      const meta = this.meta(entry.id);
+      const num = numbers.get(entry.id);
+      for (const p of meta.references ?? []) if (wanted(p)) out.push({ path: p, kind: "section", blockId: entry.id, ref: `§${num}`, title: meta.title });
+      for (const [i, ref] of meta.subBlocks.entries()) {
+        const label = `§${num}#${i + 1}`;
+        const title = ref.title ?? `${ref.type} ${i + 1}`;
+        for (const p of ref.references ?? []) if (wanted(p)) out.push({ path: p, kind: "subblock", blockId: entry.id, subBlockId: ref.id, ref: label, title });
+        if (ref.type !== "markdown") continue;
+        const source = await this.sourceText(entry.folder, ref);
+        for (const p of source ? linkedReferences(source) : []) if (wanted(p)) out.push({ path: p, kind: "text", blockId: entry.id, subBlockId: ref.id, ref: label, title });
+      }
+    }
+    return out;
+  }
+
+  /** A reference file or folder was renamed: associations and Markdown links follow (content changes bump rev). */
+  renameReferencePath(from: string, to: string): Promise<void> {
+    return this.mutex.run(async () => {
+      for (const entry of this.index.blocks) {
+        const meta = this.meta(entry.id);
+        let metaChanged = false;
+        const move = (list?: string[]) => {
+          if (!list?.some((p) => movedReferencePath(p, from, to) !== null)) return list;
+          metaChanged = true;
+          return [...new Set(list.map((p) => movedReferencePath(p, from, to) ?? p))];
+        };
+        meta.references = move(meta.references);
+        for (const ref of meta.subBlocks) {
+          ref.references = move(ref.references);
+          if (ref.type !== "markdown") continue;
+          const source = await this.sourceText(entry.folder, ref);
+          if (!source) continue;
+          const next = renameReferenceLinks(source, from, to);
+          if (next !== source) {
+            const content = this.typeOf(ref.type).deserialize(next, undefined, { sourceExt: extname(ref.source).slice(1) });
+            await this.applySubBlockUpdate(entry.id, ref.id, { content });
+          }
+        }
+        if (metaChanged) {
+          await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+          this.notify({ type: "block", blockId: entry.id });
+        }
+      }
+    });
+  }
+
+  /** Reference files/folders were deleted: drop their associations (links in text are left, shown as missing). */
+  removeReferencePaths(paths: string[]): Promise<void> {
+    return this.mutex.run(async () => {
+      const gone = (p: string) => paths.some((r) => isUnderReference(p, r));
+      for (const entry of this.index.blocks) {
+        const meta = this.meta(entry.id);
+        let changed = false;
+        const drop = (list?: string[]) => {
+          if (!list?.some(gone)) return list;
+          changed = true;
+          const rest = list.filter((p) => !gone(p));
+          return rest.length ? rest : undefined;
+        };
+        meta.references = drop(meta.references);
+        for (const ref of meta.subBlocks) ref.references = drop(ref.references);
+        if (changed) {
+          await writeJsonAtomic(this.blockJsonPath(entry.folder), meta);
+          this.notify({ type: "block", blockId: entry.id });
+        }
+      }
+    });
+  }
+
+  /** Source text of a sub-block (what the type serializes to), null if unreadable. */
+  private async sourceText(folder: string, ref: SubBlockRef): Promise<string | null> {
+    try {
+      return this.typeOf(ref.type).serialize(await this.readContent(folder, ref)).source;
+    } catch {
+      return null;
+    }
   }
 
   /** Depth of a block in the outline (0 = top level). */

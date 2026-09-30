@@ -4,6 +4,7 @@ import { extname, join, posix } from "node:path";
 import type { ReferenceNode } from "@sourcebook/shared";
 import { HttpError, badRequest, notFound } from "../errors.js";
 import { Mutex } from "../fs/mutex.js";
+import { McpContentStore } from "./McpContentStore.js";
 
 export const REFERENCES_DIR = "references";
 
@@ -35,17 +36,22 @@ export class ReferencesStore {
   readonly dir: string;
   /** Called after every change (wired to the notebook's live events). */
   onChange: () => void = () => {};
+  /** Markdown conversions of the files, for the assistant (references/.mcp/). */
+  readonly mcp: McpContentStore;
 
   constructor(projectRoot: string) {
     this.dir = join(projectRoot, REFERENCES_DIR);
+    this.mcp = new McpContentStore(this.dir, () => this.onChange());
   }
 
   abs(path: string): string {
     return join(this.dir, ...validatePath(path).split("/").filter(Boolean));
   }
 
+  /** The tree of files, each with its MCP status; files still to convert are queued for conversion. */
   async tree(): Promise<ReferenceNode> {
     await mkdir(this.dir, { recursive: true });
+    const toConvert: string[] = [];
     const walk = async (rel: string, name: string): Promise<ReferenceNode> => {
       const entries = await readdir(join(this.dir, rel), { withFileTypes: true });
       const children: ReferenceNode[] = [];
@@ -55,7 +61,9 @@ export class ReferencesStore {
         if (e.isDirectory()) children.push(await walk(childRel, e.name));
         else if (e.isFile()) {
           const st = await stat(join(this.dir, childRel));
-          children.push({ name: e.name, path: childRel, kind: "file", size: st.size, modified: st.mtime.toISOString() });
+          const mcp = await this.mcp.info(childRel, st);
+          if (mcp.status === "pending" || mcp.status === "stale") toConvert.push(childRel);
+          children.push({ name: e.name, path: childRel, kind: "file", size: st.size, modified: st.mtime.toISOString(), mcp });
         }
       }
       children.sort((a, b) =>
@@ -63,7 +71,9 @@ export class ReferencesStore {
       );
       return { name, path: rel, kind: "dir", children };
     };
-    return walk("", REFERENCES_DIR);
+    const tree = await walk("", REFERENCES_DIR);
+    this.mcp.schedule(toConvert);
+    return tree;
   }
 
   /** Stats a file, 404 when missing or not a regular file. */
@@ -98,7 +108,9 @@ export class ReferencesStore {
       for (let i = 1; existsSync(join(absDir, candidate)); i++) candidate = `${stem} (${i})${ext}`;
       await writeFile(join(absDir, candidate), data);
       this.onChange();
-      return relDir ? `${relDir}/${candidate}` : candidate;
+      const rel = relDir ? `${relDir}/${candidate}` : candidate;
+      this.mcp.schedule([rel]);
+      return rel;
     });
   }
 
@@ -117,6 +129,7 @@ export class ReferencesStore {
         throw new HttpError(409, `"${target}" already exists`);
       }
       await rename(from, to);
+      await this.mcp.move(rel, target);
       this.onChange();
       return target;
     });
@@ -158,6 +171,7 @@ export class ReferencesStore {
       const roots = rels.filter((r) => !rels.some((o) => o !== r && r.startsWith(`${o}/`)));
       for (const r of roots) if (!existsSync(this.abs(r))) throw notFound(`Reference ${r}`);
       for (const r of roots) await rm(this.abs(r), { recursive: true });
+      await this.mcp.remove(roots);
       this.onChange();
       return roots;
     });
@@ -170,6 +184,7 @@ export class ReferencesStore {
       const abs = this.abs(rel);
       if (!existsSync(abs)) throw notFound(`Reference ${rel}`);
       await rm(abs, { recursive: true });
+      await this.mcp.remove([rel]);
       this.onChange();
     });
   }
