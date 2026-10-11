@@ -3,6 +3,8 @@ import {
   CommentParamsSchema,
   CreateCommentBodySchema,
   CreateThreadBodySchema,
+  ProjectCommentsQuerySchema,
+  ResolveCommentBodySchema,
   UpdateCommentBodySchema,
   ReplyParamsSchema,
   SubBlockParamsSchema,
@@ -14,6 +16,11 @@ const base = "/blocks/:blockId/subblocks/:subBlockId/comments";
 export const commentRoutes =
   (users: UserStore): FastifyPluginAsyncZod =>
   async (app) => {
+
+    /** All threads of the project (document order); ?status=open|resolved|all. */
+    app.get("/comments", { schema: { querystring: ProjectCommentsQuerySchema } }, async (req) => ({
+      threads: await req.nb.store.listProjectComments(req.query.status),
+    }));
 
     app.get(base, { schema: { params: SubBlockParamsSchema } }, async (req) => ({
       comments: await req.nb.store.listComments(req.params.blockId, req.params.subBlockId),
@@ -35,6 +42,19 @@ export const commentRoutes =
       await req.nb.store.deleteComment(req.params.blockId, req.params.subBlockId, req.params.commentId);
       reply.code(204);
     });
+
+    app.post(
+      `${base}/:commentId/resolve`,
+      { schema: { params: CommentParamsSchema, body: ResolveCommentBodySchema.nullish() } },
+      async (req) => {
+        const author = req.body?.author ?? (await users.get());
+        return req.nb.store.setCommentResolution(req.params.blockId, req.params.subBlockId, req.params.commentId, author);
+      },
+    );
+
+    app.post(`${base}/:commentId/reopen`, { schema: { params: CommentParamsSchema } }, async (req) =>
+      req.nb.store.setCommentResolution(req.params.blockId, req.params.subBlockId, req.params.commentId, null),
+    );
 
     app.post(
       `${base}/:commentId/replies`,

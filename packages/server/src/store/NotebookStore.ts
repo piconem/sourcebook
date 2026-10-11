@@ -11,6 +11,7 @@ import {
   type AnchorInput,
   type AnchorText,
   type CommentView,
+  type ProjectCommentThread,
   createAnchor,
   resolveAnchor,
   sourceAnchorText,
@@ -135,7 +136,7 @@ export class NotebookStore {
         ...ref,
         rev: ref.rev ?? 0,
         content: await this.readContent(entry.folder, ref),
-        commentCount: (await this.readComments(entry.folder, ref)).comments.length,
+        commentCount: (await this.readComments(entry.folder, ref)).comments.filter((c) => !c.resolution).length,
       })),
     );
     return {
@@ -705,7 +706,7 @@ export class NotebookStore {
     const parsed = def.contentSchema.safeParse(raw);
     if (!parsed.success) throw badRequest(`Invalid ${def.type} content`, parsed.error.issues);
     const result = def.validate?.(parsed.data);
-    if (result && !result.ok) throw badRequest(`Invalid ${def.type} content`, result.errors);
+    if (result && !result.ok) throw badRequest(`Invalid ${def.type} content: ${result.errors.join("; ")}`, result.errors);
     return parsed.data;
   }
 
@@ -988,6 +989,48 @@ export class NotebookStore {
       await this.writeComments(entry.folder, ref, file);
       this.notify({ type: "comments", blockId, subBlockId });
     });
+  }
+
+  /** Resolves a thread (author = who resolved it) or, with null, reopens it. */
+  setCommentResolution(blockId: string, subBlockId: string, commentId: string, by: Author | null): Promise<CommentView> {
+    return this.mutex.run(async () => {
+      const entry = this.entry(blockId);
+      const ref = this.subRef(this.meta(blockId), subBlockId);
+      const file = await this.readComments(entry.folder, ref);
+      const comment = file.comments.find((c) => c.id === commentId);
+      if (!comment) throw notFound(`Comment ${commentId}`);
+      if (by) comment.resolution = { by, at: new Date().toISOString() };
+      else delete comment.resolution;
+      await this.writeComments(entry.folder, ref, file);
+      this.notify({ type: "comments", blockId, subBlockId });
+      return comment.anchor ? this.withResolved([comment], await this.anchorText(entry.folder, ref))[0] : comment;
+    });
+  }
+
+  /** Every comment thread of the project in document order, with the section and sub-block it belongs to. */
+  async listProjectComments(status: "open" | "resolved" | "all" = "all"): Promise<ProjectCommentThread[]> {
+    const out: ProjectCommentThread[] = [];
+    for (const entry of this.index.blocks) {
+      const meta = this.meta(entry.id);
+      for (const [i, ref] of meta.subBlocks.entries()) {
+        const { comments } = await this.readComments(entry.folder, ref);
+        const wanted = comments.filter((c) => status === "all" || (status === "open") === !c.resolution);
+        if (!wanted.length) continue;
+        const views = wanted.some((c) => c.anchor) ? this.withResolved(wanted, await this.anchorText(entry.folder, ref)) : wanted;
+        for (const comment of views) {
+          out.push({
+            blockId: entry.id,
+            sectionTitle: meta.title,
+            subBlockId: ref.id,
+            subBlockIndex: i + 1,
+            subBlockType: ref.type,
+            ...(ref.title ? { subBlockTitle: ref.title } : {}),
+            comment,
+          });
+        }
+      }
+    }
+    return out;
   }
 
   /** Lists files on disk under a block folder (used by tests / diagnostics). */

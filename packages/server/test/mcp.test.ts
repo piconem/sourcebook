@@ -50,9 +50,9 @@ describe("MCP server: discovery", () => {
     expect(names).toEqual([
       "add_bib_entry", "add_comment", "add_image_from_reference", "add_subblock", "attach_reference", "cite", "create_project", "create_section", "create_template", "delete_bib_entry",
       "delete_comment", "delete_section", "delete_subblock", "detach_reference", "edit_subblock_text", "export_bibtex", "get_outline", "import_bibtex",
-      "list_bibliography", "list_comments", "list_references", "list_workspace", "move_section", "move_subblock", "read_bib_entry",
+      "list_bibliography", "list_comments", "list_notifications", "list_references", "list_workspace", "move_section", "move_subblock", "notify_changes", "read_bib_entry",
       "read_document", "read_reference", "read_reference_figures", "read_reference_pages", "read_section", "read_subblock", "reanchor_comment", "reply_to_comment",
-      "save_reference_transcription", "search", "uncite", "update_bib_entry", "update_section", "update_subblock",
+      "request_reload", "resolve_comment", "save_reference_transcription", "search", "uncite", "update_bib_entry", "update_section", "update_subblock",
     ]);
     expect(tools.find((t) => t.name === "delete_section")?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === "get_outline")?.annotations?.readOnlyHint).toBe(true);
@@ -249,6 +249,56 @@ describe("MCP server: references, resources, prompts, live events", () => {
   });
 });
 
+describe("MCP: question / choice sub-blocks, resolving comments, notifications", () => {
+  it("writes question and choice sub-blocks as JSON", async () => {
+    const { ok, call } = await setup();
+    await ok("add_subblock", { project: "demo", section: "§2", type: "question", content: JSON.stringify({ question: "Which DB?", answer: "" }) });
+    const choice = { question: "Transport", mode: "single", options: [{ id: "a", text: "HTTP" }, { id: "b", text: "gRPC" }], selected: ["a"], note: "" };
+    await ok("add_subblock", { project: "demo", section: "§2", type: "choice", content: JSON.stringify(choice) });
+    expect(await ok("read_subblock", { project: "demo", subblock: "§2#1" })).toContain('"question": "Which DB?"');
+    await ok("edit_subblock_text", { project: "demo", subblock: "§2#1", edits: [{ find: '"answer": ""', replace: '"answer": "Postgres"' }] });
+    expect(await ok("read_subblock", { project: "demo", subblock: "§2#1" })).toContain("Postgres");
+    const bad = await call("update_subblock", { project: "demo", subblock: "§2#2", content: JSON.stringify({ ...choice, selected: ["a", "b"] }) });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toMatch(/Only one option/);
+    expect((await call("update_subblock", { project: "demo", subblock: "§2#2", content: "not json" })).text).toMatch(/Invalid choice JSON/);
+  });
+
+  it("resolves and reopens comments; list_comments hides resolved threads by default", async () => {
+    const { ok } = await setup();
+    const added = await ok("add_comment", { project: "demo", subblock: "§1#1", text: "Too vague" });
+    const id = /\[comment (\S+)\]/.exec(added)![1];
+    expect(await ok("resolve_comment", { project: "demo", comment: id })).toMatch(/^Resolved comment/);
+    expect(await ok("list_comments", { project: "demo" })).toBe("No comments.");
+    expect(await ok("list_comments", { project: "demo", include_resolved: true })).toMatch(/RESOLVED by Claude/);
+    await ok("resolve_comment", { project: "demo", comment: id, reopen: true });
+    expect(await ok("list_comments", { project: "demo" })).toContain(id);
+  });
+
+  it("notifies changes with outline references and asks editors to reload", async () => {
+    const { ok, call, built, rest } = await setup();
+    const { store } = await built.workspace.open("projects", "demo");
+    const events: NotebookEvent[] = [];
+    store.events.on("event", (e: NotebookEvent) => events.push(e));
+    const added = await ok("add_comment", { project: "demo", subblock: "§1#1", text: "Check" });
+    const commentId = /\[comment (\S+)\]/.exec(added)![1];
+    const sent = await ok("notify_changes", {
+      project: "demo",
+      summary: "Reworked the overview",
+      changes: [{ ref: "§1" }, { ref: "§1.1#1", note: "new imports" }, { ref: commentId }],
+      request_reload: true,
+    });
+    expect(sent).toContain("§1 Overview, §1.1#1 Code, Comment on §1#1 Summary");
+    const [n] = (await rest("GET", "/api/projects/demo/notifications")).notifications;
+    expect(n).toMatchObject({ summary: "Reworked the overview", author: { username: "claude", kind: "assistant" } });
+    expect(n.targets[2]).toMatchObject({ commentId, subBlockId: expect.any(String) });
+    expect(events.at(-1)).toMatchObject({ type: "reload", origin: "mcp", notificationIds: [n.id] });
+    expect(await ok("list_notifications", { project: "demo" })).toContain("UNREAD");
+    expect(await ok("request_reload", { project: "demo", message: "All done" })).toContain("1 notification");
+    expect((await call("notify_changes", { project: "demo", summary: "x", changes: [{ ref: "§9" }] })).isError).toBe(true);
+  });
+});
+
 describe("MCP over HTTP (/mcp)", () => {
   let close: (() => Promise<void>) | undefined;
   afterEach(async () => close?.());
@@ -259,7 +309,7 @@ describe("MCP over HTTP (/mcp)", () => {
     close = () => app.close();
     const client = new Client({ name: "http-test", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${address}/mcp`)));
-    expect((await client.listTools()).tools.length).toBe(39);
+    expect((await client.listTools()).tools.length).toBe(43);
     const res = (await client.callTool({ name: "get_outline", arguments: { project: "demo" } })) as { content: { text: string }[] };
     expect(res.content[0].text).toContain("§1.1 Scope");
     await client.close();

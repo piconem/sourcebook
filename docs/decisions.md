@@ -41,6 +41,15 @@ remains the fallback if fidelity problems appear. `roundtrip.test.ts` guards the
 | equation | `NN-equation.tex`     | `.png`                                      |
 | image    | `NN-image.md` (a Markdown image reference to `../assets/<id>.<ext>`) | the image itself in `assets/` |
 | code     | `NN-code.<ext>` — the extension encodes the language (`CODE_LANGUAGES` in shared) | – |
+| question | `NN-question.json` — `{ question, answer }` (a file that is not JSON is read as the question) | – |
+| choice   | `NN-choice.json` — `{ question, mode: "single"\|"multiple", options: [{ id, text }], selected: [ids], note }` | – |
+
+Question and multiple-choice sub-blocks are stored as JSON (unambiguous to parse, still readable and editable by an
+assistant with `edit_subblock_text`). `choice` validation: unique option ids, selected ids must exist, at most one
+selected in `single` mode (switching a block to single keeps only the first selection). Option ids are short random
+strings, so renaming or reordering options keeps the selection. The **note** is edited as a draft and stored only with
+"Save note" (the rest of the block saves automatically, like other sub-blocks); an unsaved note is lost on reload.
+In the combined Markdown export: `**Q:** … **A:** …`, and the question with a `- [x]`/`- [ ]` list and the note as a quote.
 
 The contract has two optional hooks for this: `sourceExtFor(content)` (the store renames the source
 file when the extension changes, e.g. switching a code sub-block from Python to Rust) and
@@ -68,8 +77,9 @@ via `prosemirror-tables` commands (`moveTableRow`, `moveTableColumn`). Row 0 is 
 stays in place.
 
 ## Deleting content with assets
-- Sub-block: if `assetsOf` reports files, a dialog asks whether to delete them too (default: yes). Files still
-  referenced by another sub-block of the same block are kept and reported.
+- Sub-block: a confirmation dialog is always shown (reference and type of the sub-block). If `assetsOf` reports
+  files, it also asks whether to delete them (default: yes). Files still referenced by another sub-block of the same
+  block are kept and reported.
 - Image replaced by a new upload: a dialog asks whether to delete the previous file. The sub-block is saved
   first, then `DELETE /api/blocks/:id/assets/:name` removes it, refusing (409) while any sub-block still references it.
 - Block: a dialog lists the nested sections and the asset files that will be removed with the folder
@@ -106,7 +116,12 @@ viewBox, so zoom stays vector-sharp. Zoom is view-only: exported PNG/SVG are una
 Every sub-block has an expand icon in its header. The already-mounted editor is restyled as a full-page panel
 (fixed position over a backdrop) instead of being re-rendered in a separate dialog, so editor state, undo
 history and the Excalidraw scene are preserved. Esc, the backdrop or the icon close it (Esc inside Excalidraw
-is left to Excalidraw).
+is left to Excalidraw). The delete button is hidden while a sub-block is in full page.
+
+## Resizable sidebar
+The editor sidebar (outline) can be resized by dragging the handle on its right edge (200–640 px; arrow keys,
+Shift for bigger steps, Home/End; double-click resets to 280 px), for long section titles. The width is a per-browser
+preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
 
 ## Themes
 - **Tokens, not hard-coded colors.** Every color in `styles.css` is a CSS custom property. A theme
@@ -202,8 +217,46 @@ is left to Excalidraw).
   attached/detached status and line numbers; `useCommentAnchoring` holds the editor-independent logic, and each
   editor supplies a small adapter (text, ranges, selection, reveal).
 
+## Resolved comments and the project's comment list
+- A thread can be **resolved** (nothing left to do) and reopened: `resolution: { by, at }` in the comments file
+  (`POST …/comments/:id/resolve|reopen`). `commentCount` of a sub-block counts open threads only; resolved threads are
+  not highlighted in the text, are collapsed to one line in the comments column ("Show" expands them) and are hidden by
+  the MCP `list_comments` unless `include_resolved`. `findComment` (MCP) still finds them by id.
+- `GET …/comments` lists every thread of the project in document order with its section and sub-block, so the UI and
+  the assistant do not read each sub-block. The top-bar comments button (badge = open threads) shows them grouped by
+  section with an Open / Resolved / All filter; clicking one opens the section, scrolls to the sub-block, opens its
+  comments column and activates the thread.
+
+## Change notifications and reload requests
+- External applications / assistants describe what they changed with `POST …/notifications` (`summary` ≤ 300 chars,
+  up to 50 targets). Granularity is at most a section: a target is a section, a sub-block of it, or a comment on that
+  sub-block — each must exist (400 otherwise). Its label (`§2.1 Title`, `§2.1#3 Markdown`, `Comment on …`) is recorded
+  at that moment; the UI recomputes labels from the current outline and uses the stored one, marked "(deleted)", when
+  the part no longer exists.
+- Stored per project in `notifications.json`, newest first, at most 200 (older ones are dropped). The read state is
+  shared by every window (single-user app). Not content: project copies, templates and template archives leave it out.
+- UI: bell in the top bar (badge = unread). Each notification shows author (AI badge for assistants), relative time,
+  summary and its parts as links; opening it (summary or a part) marks it read and goes there. "Mark as read" per item
+  and "Mark all as read" keep items in the list; "Clear" (with confirmation) empties it.
+- Reload requests (`POST …/reload-request`, or `requestReload` on a notification) only emit a live `reload` event;
+  nothing is stored. Open editors show a dialog with the sender, the message and the notifications concerned
+  (default: the unread ones), with "Reload now" (flushes every pending debounced save, then `location.reload()`) and
+  "Later". Editors that are not open when the request is sent never see it (the notifications remain).
+- MCP: `notify_changes` (references like `§2.1#3` or comment ids, resolved to ids; author = the assistant),
+  `request_reload`, `list_notifications`. In read-only mode they are refused like every MCP write.
+
+## Links (URL of sections, sub-blocks and comments)
+- The hash route carries the place shown: `#/projects/<id>/s/<sectionId>[/b/<subBlockId>[/c/<commentId>]]` (templates
+  alike). Stable ids rather than outline numbers, so links survive reordering. Selecting a section in the outline
+  pushes a history entry; the document-mode scroll spy replaces the URL (no history spam) and keeps a more specific
+  sub-block/comment URL while its section stays in view.
+- Opening a link (or back/forward) selects the section, scrolls to it and, for a sub-block, scrolls to it and flashes
+  it (in document mode after ~0.8 s, while the section finishes aligning); a comment link also opens the comments
+  column and activates the thread. Unknown ids are ignored. The ↗ button of sections and sub-blocks copies the full URL.
+
 ## Top bar actions and scrolling mode
-- Top bar, right side: scrolling mode, Appearance, profile avatar (Appearance moved here from the sidebar).
+- Top bar, right side: all comments, notifications (editor only), scrolling mode, Appearance, profile avatar
+  (Appearance moved here from the sidebar).
 - Scrolling mode (menu, remembered per browser in `sourcebook.scrollMode`):
   - **Section**: the main area shows only the selected section/sub-section.
   - **Document**: every section in outline order, one scrolling document. Sections mount lazily when they come
@@ -279,7 +332,7 @@ projects and templates, in both scrolling modes.
 - Comments by the assistant carry `author.kind: "assistant"` and show an "AI" badge. 🔗 buttons copy references
   (section, sub-block, code lines, quoted Markdown text) to paste in the chat.
 - Limits: sub-blocks move only within their section; images/drawings are read as descriptions and cannot be written
-  via MCP; binary references (PDF, Office) cannot be read as text.
+  via MCP (question and choice sub-blocks are written as JSON); binary references (PDF, Office) cannot be read as text.
 
 ## Ask AI (prompts for the assistant)
 A speech-bubble-with-sparkles button on every element that can be referenced — the whole document (sidebar),

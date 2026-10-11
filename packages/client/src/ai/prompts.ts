@@ -39,7 +39,7 @@ export const MODES: { id: AiMode; label: string; hint: string; writes: boolean }
 ];
 
 const TEXT_TYPES = new Set(["markdown", "code"]);
-const EDITABLE_TYPES = new Set(["markdown", "code", "mermaid", "equation"]);
+const EDITABLE_TYPES = new Set(["markdown", "code", "mermaid", "equation", "question", "choice"]);
 
 /** Which modes make sense for a target (see the table in docs/decisions.md). */
 export function modesFor(target: AiTarget): AiMode[] {

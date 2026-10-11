@@ -4,7 +4,11 @@ import { NotebookView, TEXT_TYPES, contentFor, sourceText } from "../notebook.js
 import { RefError, parseProject } from "../refs.js";
 import { DESTRUCTIVE, WRITE, projectParam, refParam, run, type ToolContext } from "./common.js";
 
-const typeParam = z.enum(TEXT_TYPES).describe("Sub-block type: markdown (rich text), code (with language), mermaid (diagram source), equation (LaTeX)");
+const typeParam = z
+  .enum(TEXT_TYPES)
+  .describe(
+    'Sub-block type: markdown (rich text), code (with language), mermaid (diagram source), equation (LaTeX), question (JSON {"question","answer"}), choice (multiple choice, JSON {"question","mode":"single"|"multiple","options":[{"id","text"}],"selected":[ids],"note"})',
+  );
 const positionParam = (what: string) => z.number().int().min(1).optional().describe(`1-based position among the ${what}; omit to append at the end`);
 
 export function registerWriteTools({ server, api, open }: ToolContext) {
@@ -157,12 +161,13 @@ export function registerWriteTools({ server, api, open }: ToolContext) {
     "add_subblock",
     {
       title: "Add a sub-block",
-      description: "Adds a content sub-block to a section: markdown, code (set language), mermaid or equation (LaTeX). Optional title and objective.",
+      description:
+        "Adds a content sub-block to a section: markdown, code (set language), mermaid, equation (LaTeX), question (question + answer) or choice (multiple choice). Question and choice content is JSON (see type). Optional title and objective.",
       inputSchema: {
         project: projectParam,
         section: refParam("Target section"),
         type: typeParam,
-        content: z.string().describe("Source text: Markdown, code, Mermaid diagram or LaTeX"),
+        content: z.string().describe("Source text: Markdown, code, Mermaid diagram, LaTeX, or JSON for question/choice"),
         language: z.string().optional().describe('For code: language id, e.g. "python", "typescript", "sql"'),
         title: z.string().max(200).optional(),
         objective: z.string().max(20000).optional(),

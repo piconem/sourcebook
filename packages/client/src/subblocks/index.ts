@@ -1,4 +1,5 @@
 import {
+  choiceType,
   codeType,
   createRegistry,
   drawingType,
@@ -6,11 +7,13 @@ import {
   imageType,
   markdownType,
   mermaidType,
+  questionType,
   type DrawingContent,
   type EquationContent,
   type MermaidContent,
 } from "@sourcebook/shared";
 import { lazy } from "react";
+import { ChoiceEditor } from "./choice/ChoiceEditor";
 import { CodeEditor } from "./code/CodeEditor";
 import { exportDrawing } from "./drawing/export";
 import { EquationEditor } from "./equation/EquationEditor";
@@ -18,6 +21,7 @@ import { exportEquation } from "./equation/export";
 import { ImageEditor } from "./image/ImageEditor";
 import { MarkdownEditor } from "./markdown/MarkdownEditor";
 import { MermaidEditor } from "./mermaid/MermaidEditor";
+import { QuestionEditor } from "./question/QuestionEditor";
 import { exportMermaid } from "./mermaid/render";
 import type { ClientSubBlockType } from "./types";
 
@@ -49,4 +53,6 @@ export const registry = createRegistry<ClientSubBlockType>([
     exportArtifacts: (c: EquationContent) => exportEquation(c.latex),
   },
   { ...codeType, icon: "</>", component: CodeEditor },
+  { ...questionType, icon: "?", component: QuestionEditor },
+  { ...choiceType, icon: "☑", component: ChoiceEditor },
 ]);

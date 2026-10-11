@@ -22,6 +22,8 @@ import type {
   Comment,
   CommentAnchor,
   CommentReply,
+  Notification,
+  ProjectCommentThread,
   UserProfile,
   CreateBlockBody,
   CreateSubBlockBody,
@@ -176,6 +178,19 @@ export const api = {
     request<CommentReply>("POST", `${commentsUrl(blockId, subBlockId)}/${commentId}/replies`, { text }),
   deleteComment: (blockId: string, subBlockId: string, commentId: string, replyId?: string) =>
     request<void>("DELETE", `${commentsUrl(blockId, subBlockId)}/${commentId}${replyId ? `/replies/${replyId}` : ""}`),
+  /** Resolves (or, with resolved=false, reopens) a comment thread. */
+  setCommentResolved: (blockId: string, subBlockId: string, commentId: string, resolved: boolean) =>
+    request<Comment>("POST", `${commentsUrl(blockId, subBlockId)}/${commentId}/${resolved ? "resolve" : "reopen"}`, resolved ? {} : undefined),
+  /** Every comment thread of the project, in document order. */
+  getProjectComments: () => request<{ threads: ProjectCommentThread[] }>("GET", `${nbBase}/comments`).then((r) => r.threads),
+
+  // ---- change notifications ----
+  getNotifications: () => request<{ notifications: Notification[] }>("GET", `${nbBase}/notifications`).then((r) => r.notifications),
+  markNotificationRead: (id: string) =>
+    request<{ notifications: Notification[] }>("POST", `${nbBase}/notifications/${id}/read`).then((r) => r.notifications),
+  markAllNotificationsRead: () =>
+    request<{ notifications: Notification[] }>("POST", `${nbBase}/notifications/read-all`).then((r) => r.notifications),
+  clearNotifications: () => request<void>("DELETE", `${nbBase}/notifications`),
 
   // ---- references ----
   getReferences: () => request<ReferenceNode>("GET", `${nbBase}/references`),

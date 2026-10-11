@@ -190,3 +190,31 @@ describe("anchoring by source lines (API convenience)", () => {
     expect((await call("POST", url(s2), { text: "x", anchor: { lines: { first: 1, last: 1 } } })).status).toBe(400);
   });
 });
+
+describe("resolving comments", () => {
+  it("resolves and reopens threads, counts only open ones and lists the project's threads", async () => {
+    const { call, b, s1, s2, url } = await setup();
+    const c1 = (await call("POST", url(s1), { text: "Fix this" })).body;
+    const c2 = (await call("POST", url(s2), { text: "Check the sign" })).body;
+
+    const resolved = await call("POST", `${url(s1)}/${c1.id}/resolve`);
+    expect(resolved.status).toBe(200);
+    expect(resolved.body.resolution.by.username).toBeTruthy();
+    const block = (await call("GET", `/api/blocks/${b.id}`)).body;
+    expect(block.subBlocks.map((s: { commentCount: number }) => s.commentCount)).toEqual([0, 1]);
+
+    const all = (await call("GET", "/api/comments")).body.threads;
+    expect(all.map((t: { comment: { id: string }; subBlockIndex: number }) => [t.comment.id, t.subBlockIndex])).toEqual([
+      [c1.id, 1],
+      [c2.id, 2],
+    ]);
+    expect(all[0]).toMatchObject({ blockId: b.id, sectionTitle: "Intro", subBlockId: s1.id, subBlockType: "markdown" });
+    expect((await call("GET", "/api/comments?status=open")).body.threads.map((t: { comment: { id: string } }) => t.comment.id)).toEqual([c2.id]);
+    expect((await call("GET", "/api/comments?status=resolved")).body.threads.map((t: { comment: { id: string } }) => t.comment.id)).toEqual([c1.id]);
+
+    const reopened = (await call("POST", `${url(s1)}/${c1.id}/reopen`)).body;
+    expect(reopened.resolution).toBeUndefined();
+    expect((await call("GET", "/api/comments?status=open")).body.threads).toHaveLength(2);
+    expect((await call("POST", `${url(s1)}/nope123/resolve`)).status).toBe(404);
+  });
+});

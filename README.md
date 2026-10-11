@@ -39,6 +39,7 @@ packages/mcp      MCP server for LLM assistants (tools, resources, prompts; stdi
         .mcp/<file path>/       generated for the assistant (hidden, rebuilt automatically):
                                 content.md, manifest.json, pages/p001.webp… (page images), figures/p003-1.webp… (PDF figures)
       bibliography.json         citable sources (key, type, name, authors, year, venue, title, DOI, link, BibTeX…)
+      notifications.json        change notifications received from applications / assistants (not copied with the project)
       blocks/
         001-introduction/
           block.json            id, title, parentId, order, objective?, ordered sub-block refs
@@ -51,8 +52,10 @@ packages/mcp      MCP server for LLM assistants (tools, resources, prompts; stdi
           assets/<id>.png       uploaded images
           subblocks/01-image.md ![alt](../assets/<id>.png "caption")
           subblocks/02-code.py  code sub-block: the extension carries the language
+          subblocks/03-question.json   { "question", "answer" }
+          subblocks/04-choice.json     { "question", "mode": "single"|"multiple", "options": [{ "id", "text" }], "selected": [ids], "note" }
   templates/
-    design-doc/                 same format as a project
+    software-project/           same format as a project
 ```
 
 ## REST API
@@ -85,7 +88,7 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | POST | `…/blocks/:id/subblocks` | `{ type, content?, props?, position? }` |
 | PATCH | `…/blocks/:blockId/subblocks/:subBlockId` | `{ content?, title?, objective?, props?, exports?: [{ ext, mimeType, dataBase64 }], expectedRev? }` — 409 if the revision changed |
 | POST | `…/blocks/:blockId/subblocks/:subBlockId/edit` | `{ edits: [{ find, replace, all? } \| { lines: { first, last }, text }], expectedRev? }` — atomic text edits of the source |
-| GET | `…/events` | Server-Sent Events: `{ type, blockId?, subBlockId?, rev?, origin }` after every change |
+| GET | `…/events` | Server-Sent Events: `{ type, blockId?, subBlockId?, rev?, origin }` after every change; `type: "notifications"` when notifications change, `type: "reload"` (with `author`, `message?`, `notificationIds`) for reload requests |
 | PATCH | `…/blocks/:blockId/subblocks/reorder` | `{ order: [subBlockId…] }` |
 | DELETE | `…/blocks/:blockId/subblocks/:subBlockId?deleteAssets=true` | → `{ deletedAssets, keptAssets }` |
 | POST | `…/assets?blockId=…` | multipart `file` → `{ path, url }` |
@@ -96,6 +99,13 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | PATCH | `…/comments/:commentId` | `{ anchor }` re-attach (lines or quote), or `{ anchor: null }` for a general comment |
 | POST | `…/comments/:commentId/replies` | `{ text, author? }` |
 | DELETE | `…/comments/:commentId` · `…/comments/:commentId/replies/:replyId` | |
+| POST | `…/comments/:commentId/resolve` · `…/comments/:commentId/reopen` | resolve (`{ author? }`, default the user profile) / reopen a thread; resolved threads carry `resolution: { by, at }` |
+| GET | `…/comments?status=open\|resolved\|all` | `{ threads: [{ blockId, sectionTitle, subBlockId, subBlockIndex, subBlockType, subBlockTitle?, comment }] }` — every thread of the project, in document order |
+| GET | `…/notifications` | `{ notifications }`, newest first: `{ id, createdAt, author, summary, targets: [{ blockId, subBlockId?, commentId?, note?, label }], read }` |
+| POST | `…/notifications` | `{ summary, targets: [{ blockId, subBlockId?, commentId?, note? }], author?, requestReload? }` — notifies the user of a change (targets: sections, sub-blocks or comments; 400 if one does not exist); `requestReload: true` also asks open editors to reload |
+| POST | `…/notifications/:id/read` · `…/notifications/read-all` | mark as read → `{ notifications }` |
+| DELETE | `…/notifications` | clear the list |
+| POST | `…/reload-request` | `{ message?, notificationIds?, author? }` — asks open editors to reload, listing those notifications (default: the unread ones) |
 | GET | `…/references` | tree of `references/`; each file has `mcp: { status, kind, unit?, parts?, pageImages?, figures?, imageOnlyParts?, error? }` (see below) and documents still to convert are queued |
 | GET | `…/references/file/*` | a reference, inline (`?download=1` to download) |
 | POST | `…/references/upload?dir=…` | multipart, one or more `file` fields (≤ 100 MB each) |
@@ -130,10 +140,29 @@ Citations in Markdown text are links `[Name](bib:key)`. The combined export turn
 Anchored comments are returned with `resolved: { lines: { first, last } }` — where their text is now in the
 source file — or `resolved: null` when the text is gone (detached).
 
+**Change notifications.** An application or script that changes a project tells the user what it did with one
+notification per group of changes (a short summary plus the sections, sub-blocks or comments involved). They appear
+in the bell menu at the top right of the editor (unread count, author, summary, links to each part); opening one
+marks it read, "Mark all as read" and "Clear" manage the list. At the end of a group of changes, a reload request
+shows the user a dialog with the message and those notifications, and offers to reload the page (pending edits are
+saved first).
+
+```bash
+# Tell the user what changed, then ask open editors to reload
+curl -X POST localhost:4000/api/projects/checkout/notifications -H 'content-type: application/json' \
+  -d '{"summary": "Updated the API section", "targets": [{"blockId": "'$BLOCK'", "subBlockId": "'$SUB'", "note": "new endpoints"}]}'
+curl -X POST localhost:4000/api/projects/checkout/reload-request -H 'content-type: application/json' \
+  -d '{"message": "Refactoring of §2 complete"}'
+```
+
+**Links.** The URL follows what is shown: `#/projects/<id>/s/<sectionId>` (a section),
+`…/b/<subBlockId>` (a sub-block), `…/c/<commentId>` (a comment thread, opened in the comments column). Ids are used,
+so links survive moving sections; the ↗ buttons of sections and sub-blocks copy them.
+
 ```bash
 # Create a project from a template, then comment lines 12-14 of one of its code sub-blocks
 curl -X POST localhost:4000/api/projects -H 'content-type: application/json' \
-  -d '{"name": "Checkout", "from": {"kind": "templates", "id": "design-doc"}}'
+  -d '{"name": "Checkout", "from": {"kind": "templates", "id": "software-project"}}'
 curl -X POST localhost:4000/api/projects/checkout/blocks/$BLOCK/subblocks/$SUB/comments \
   -H 'content-type: application/json' \
   -d '{"text": "Handle the timeout here", "anchor": {"lines": {"first": 12, "last": 14}}}'
@@ -202,10 +231,12 @@ ids and `sourcebook://projects/<id>/subblocks/<id>` URIs.
 
 **Tools**: `list_workspace`, `get_outline`, `read_section`, `read_subblock`, `read_document`, `search`, `list_references`,
 `read_reference` (text as it is, images as images, documents as converted Markdown, by `parts`), `read_reference_pages`
-(PDF pages as images), `read_reference_figures` (figures cut out of PDFs, with captions), `list_comments` · `save_reference_transcription` · `create_project`, `create_template`, `create_section`, `add_subblock`,
+(PDF pages as images), `read_reference_figures` (figures cut out of PDFs, with captions), `list_comments` (open threads;
+`include_resolved` for all), `list_notifications` · `save_reference_transcription` · `create_project`, `create_template`, `create_section`, `add_subblock`,
 `update_section`, `update_subblock`, `edit_subblock_text` (find/replace or line ranges, atomic), `move_section`,
 `move_subblock` · `add_image_from_reference` (an image file or a PDF figure as an image sub-block) · `add_comment`,
-`reply_to_comment`, `reanchor_comment` · `attach_reference` / `detach_reference`
+`reply_to_comment`, `reanchor_comment`, `resolve_comment` · `notify_changes` (summary + parts involved, as
+`§2.1` / `§2.1#3` / comment references; `request_reload` option), `request_reload` · `attach_reference` / `detach_reference`
 (reference files of a whole section or sub-block) · bibliography: `list_bibliography`,
 `read_bib_entry`, `export_bibtex`, `add_bib_entry`, `update_bib_entry`, `import_bibtex`, `cite` / `uncite` (associate
 sources with a section or sub-block; in text the assistant writes `[Name](bib:key)` with `edit_subblock_text`) ·
@@ -214,7 +245,24 @@ destructive (the client asks first): `delete_section`, `delete_subblock`, `delet
 Examples: *"Show me the outline of the payment-service project"*, *"Rewrite §2.1#1 more concisely"*,
 *"Comment §3.2#2:L4-6: the timeout is not handled"*, *"Answer the open comments in §4"*,
 *"Create a project from the thesis template and fill in the introduction with me"*,
-*"Add this BibTeX to the bibliography and cite it in §2.1#1 where we discuss the protocol"*.
+*"Add this BibTeX to the bibliography and cite it in §2.1#1 where we discuss the protocol"*,
+*"Handle the open comments in §2, resolve them, then notify me and ask me to reload"*.
+
+Question (`question`) and multiple-choice (`choice`) sub-blocks are read and written by the assistant as their JSON
+source (see On-disk format); a multiple-choice sub-block in `single` mode accepts at most one selected option.
+
+## Example templates
+`python3 scripts/create-example-templates.py [--replace] [--only <id>…]` creates them through the REST API of a running
+server: **Software Project**, Scientific Paper, Research Project Proposal, Thesis.
+
+**Software Project** is meant to be worked on alone or with an AI assistant. It starts with _Prompts_ (a ready-to-paste
+briefing for an AI assistant, in English and Italian: MCP tools / REST API, structure, behaviour) and _Instructions_ (conventions,
+IDs such as FR-xx / Q-xx / ADR-xxx / T-xx, section status, rules for the assistant, glossary), then Vision & Objectives,
+Requirements, Open Questions (question and multiple-choice blocks), Decisions (ADR), Architecture, Design (patterns,
+sequence and class diagrams, interfaces, error handling), Data Models, Project Structure & Packages, Cross-cutting
+Concerns, Testing, Deployment & Operations, Documentation, Development Plan, Issues/Bugs/Tech Debt and Risks. The ADR
+section opens with an index of all decisions; each ADR has a status block (🟡 Proposed · 🟢 Approved · 🔴 Rejected),
+context, a question block, the options considered (multiple choice with a note) and the consequences.
 
 ## Adding a sub-block type
 1. `packages/shared/src/types/<type>.ts`: a `SubBlockTypeCore` (zod content schema, source extension,

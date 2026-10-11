@@ -87,6 +87,24 @@ export function registerCommentTools({ server, api, open, author }: ToolContext)
   );
 
   server.registerTool(
+    "resolve_comment",
+    {
+      title: "Resolve a comment thread",
+      description: "Marks a comment thread as resolved (nothing left to do), e.g. after making the change it asked for; reopen=true opens it again.",
+      inputSchema: { project: projectParam, comment: commentRef, reopen: z.boolean().optional() },
+      annotations: WRITE,
+    },
+    run(async ({ project, comment, reopen }) => {
+      const nb = await open(project);
+      const found = await resolveComment(nb, comment);
+      const url = `${nb.base}/blocks/${found.entry.id}/subblocks/${found.ref.id}/comments/${found.comment.id}`;
+      if (reopen) await api.json("POST", `${url}/reopen`);
+      else await api.json("POST", `${url}/resolve`, { author });
+      return `${reopen ? "Reopened" : "Resolved"} comment ${found.comment.id} by ${found.comment.author.name} on ${nb.subRef(found.entry, found.index)}.`;
+    }),
+  );
+
+  server.registerTool(
     "delete_comment",
     {
       title: "Delete a comment or reply",

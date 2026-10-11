@@ -37,7 +37,7 @@ export const originLabel = (origin: string | undefined) =>
  * MCP, a script) is refetched; sub-block content changes are recorded for conflict handling.
  * Returns an unsubscribe function.
  */
-export function subscribeProjectEvents(qc: QueryClient, changes: ExternalChanges): () => void {
+export function subscribeProjectEvents(qc: QueryClient, changes: ExternalChanges, onReload?: (ev: NotebookEvent) => void): () => void {
   if (typeof EventSource === "undefined") return () => {};
   const es = new EventSource(`${notebookBase()}/events`);
   es.onmessage = (m) => {
@@ -47,15 +47,27 @@ export function subscribeProjectEvents(qc: QueryClient, changes: ExternalChanges
     } catch {
       return;
     }
+    if (ev.type === "notifications") {
+      // Also from this tab: other components (e.g. the menu in another window) follow the read state.
+      void qc.invalidateQueries({ queryKey: keys.notifications });
+      return;
+    }
+    if (ev.type === "reload") {
+      void qc.invalidateQueries({ queryKey: keys.notifications });
+      onReload?.(ev);
+      return;
+    }
     if (ev.origin === CLIENT_ID) return;
     if (ev.type === "blocks" || ev.type === "block") {
       void qc.invalidateQueries({ queryKey: keys.project });
+      void qc.invalidateQueries({ queryKey: keys.projectComments });
       if (ev.blockId) void qc.invalidateQueries({ queryKey: keys.block(ev.blockId) });
     } else if (ev.type === "subblock" && ev.blockId && ev.subBlockId) {
       changes.record(ev.subBlockId, ev.rev ?? 0, ev.origin);
       void qc.invalidateQueries({ queryKey: keys.block(ev.blockId) });
     } else if (ev.type === "comments" && ev.blockId && ev.subBlockId) {
       void qc.invalidateQueries({ queryKey: keys.comments(ev.blockId, ev.subBlockId) });
+      void qc.invalidateQueries({ queryKey: keys.projectComments });
       void qc.invalidateQueries({ queryKey: keys.block(ev.blockId) });
     } else if (ev.type === "references") {
       void qc.invalidateQueries({ queryKey: referencesKey });

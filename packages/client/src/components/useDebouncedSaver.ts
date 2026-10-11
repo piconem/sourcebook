@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** Flush functions of every mounted saver (to save everything before a page reload). */
+const savers = new Set<() => Promise<void>>();
+
+/** Saves every pending edit now. */
+export async function flushAllSaves() {
+  await Promise.allSettled([...savers].map((f) => f()));
+}
+
 export type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
 
 /** Debounces saves; always persists the latest value and flushes on unmount. */
@@ -54,6 +62,12 @@ export function useDebouncedSaver<T>(save: (value: T) => Promise<void>, delay = 
   /** True while changes are waiting to be saved or being saved. */
   const isDirty = useCallback(() => !!pending.current || !!running.current, []);
 
-  useEffect(() => () => void flush(), [flush]);
+  useEffect(() => {
+    savers.add(flush);
+    return () => {
+      savers.delete(flush);
+      void flush();
+    };
+  }, [flush]);
   return { schedule, flush, cancel, isDirty, state, error };
 }

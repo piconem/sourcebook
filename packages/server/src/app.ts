@@ -13,6 +13,7 @@ import { createServerRegistry } from "./registry.js";
 import { assetRoutes } from "./routes/assets.js";
 import { bibliographyRoutes } from "./routes/bibliography.js";
 import { blockRoutes } from "./routes/blocks.js";
+import { notificationRoutes } from "./routes/notifications.js";
 import { commentRoutes } from "./routes/comments.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { settingsRoutes } from "./routes/settings.js";
@@ -106,6 +107,7 @@ export async function buildApp(workspaceDir: string, opts: { logger?: boolean; c
         await scoped.register(referenceImageRoutes());
         await scoped.register(bibliographyRoutes());
         await scoped.register(commentRoutes(users));
+        await scoped.register(notificationRoutes(users));
       },
       { prefix: `/api/${kind}/:projectId` },
     );

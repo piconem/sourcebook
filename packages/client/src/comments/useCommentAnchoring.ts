@@ -40,7 +40,8 @@ export function useCommentAnchoring(opts: {
   });
   const { activeId } = useBridge(bridge);
   const anchoredRef = useRef<Comment[]>([]);
-  anchoredRef.current = (comments ?? []).filter((c) => c.anchor);
+  // Resolved threads are not highlighted in the text.
+  anchoredRef.current = (comments ?? []).filter((c) => c.anchor && !c.resolution);
 
   const report = useCallback(
     (ranges: Map<string, TextRange>) => {

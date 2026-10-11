@@ -81,9 +81,12 @@ async function render() {
 }
 
 describe("top bar and scrolling mode", () => {
-  it("has scrolling, appearance and profile buttons on the right, in this order", async () => {
+  it("has comments, notifications, scrolling, appearance and profile buttons on the right, in this order", async () => {
     await render();
-    expect($$(".topbar-actions > *").map((e) => e.querySelector("button")?.getAttribute("aria-label") ?? e.getAttribute("aria-label"))).toEqual([
+    for (let i = 0; i < 20 && !$("[aria-label=Notifications]"); i++) await tick();
+    expect($$(".topbar-actions button[aria-label]").map((e) => e.getAttribute("aria-label"))).toEqual([
+      "All comments",
+      "Notifications",
       "Scrolling mode",
       "Appearance",
       "User settings",
@@ -122,6 +125,19 @@ describe("top bar and scrolling mode", () => {
     for (let i = 0; i < 20 && titles().length !== 1; i++) await tick();
     expect(titles()).toEqual(["Design"]); // section mode shows the selected section
     expect(localStorage.getItem("sourcebook.scrollMode")).toBe("section");
+  });
+
+  it("resizes the sidebar with the keyboard and remembers the width", async () => {
+    await render();
+    const handle = $("[aria-label='Resize sidebar']");
+    expect($(".app").style.gridTemplateColumns).toBe("280px minmax(0, 1fr)");
+    await act(async () => void handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true })));
+    expect($(".app").style.gridTemplateColumns).toBe("320px minmax(0, 1fr)");
+    expect(localStorage.getItem("sourcebook.sidebarWidth")).toBe("320");
+    await act(async () => void handle.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+    expect(handle.getAttribute("aria-valuenow")).toBe("200");
+    await act(async () => void handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(handle.getAttribute("aria-valuenow")).toBe("280");
   });
 
   it("starts in the remembered mode", async () => {

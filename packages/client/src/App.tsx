@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import type { NotebookKind } from "@sourcebook/shared";
+import { createPortal } from "react-dom";
+import type { NotebookEvent, NotebookKind } from "@sourcebook/shared";
 import { useQuery } from "@tanstack/react-query";
 import { api, setNotebookBase } from "./api/client";
 import { keys, useProject } from "./api/queries";
@@ -8,13 +9,17 @@ import { BlockView } from "./components/BlockView";
 import { ExportDialog } from "./components/ExportDialog";
 import { DocumentView } from "./components/DocumentView";
 import { OutlineTree } from "./components/OutlineTree";
+import { SidebarResizer, useSidebarWidth } from "./components/SidebarResizer";
 import { loadScrollMode, saveScrollMode, type ScrollMode } from "./components/scrollMode";
 import { HomePage } from "./home/HomePage";
 import { AskAiButton } from "./ai/AskAiButton";
 import { AskAiProvider } from "./ai/AskAiContext";
 import { ExternalChanges, ExternalChangesContext, subscribeProjectEvents } from "./live/externalChanges";
 import { kindLabel } from "./home/NotebookDialogs";
-import { routeHref, useRoute } from "./router";
+import { recordRoute, routeHref, targetKey, useRoute, type Target } from "./router";
+import { FocusContext, type FocusRequest } from "./live/focus";
+import { EditorActions } from "./notifications/EditorActions";
+import { ReloadDialog } from "./notifications/ReloadDialog";
 import { outlineNumbers, withDepth } from "./tree";
 import { TopBar } from "./components/TopBar";
 import { ReferencesBrowser } from "./references/ReferencesBrowser";
@@ -54,7 +59,21 @@ function BibliographyNavItem({ active, onClick }: { active: boolean; onClick(): 
 }
 
 /** Editor for one project or template (the notebook API base is set before anything is fetched). */
-function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: string; scrollMode: ScrollMode }) {
+function ProjectEditor({
+  kind,
+  id,
+  scrollMode,
+  target,
+  actionsSlot,
+}: {
+  kind: NotebookKind;
+  id: string;
+  scrollMode: ScrollMode;
+  /** Section / sub-block / comment named by the URL. */
+  target?: Target;
+  /** Top bar element where the editor's own buttons (notifications, comments) are rendered. */
+  actionsSlot: HTMLElement | null;
+}) {
   const qc = useQueryClient();
   useState(() => {
     setNotebookBase(kind, id);
@@ -65,17 +84,40 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
   const { data: project, error } = useProject();
   // Live updates: changes made by the assistant (MCP), other windows or scripts appear here.
   const [changes] = useState(() => new ExternalChanges());
-  useEffect(() => subscribeProjectEvents(qc, changes), [qc, changes]);
+  // Reload requested by an application / assistant after a group of changes.
+  const [sidebarWidth, setSidebarWidth] = useSidebarWidth();
+  const [reloadRequest, setReloadRequest] = useState<NotebookEvent | null>(null);
+  useEffect(() => subscribeProjectEvents(qc, changes, setReloadRequest), [qc, changes]);
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState<"block" | "references" | "bibliography">("block");
   const [scrollTo, setScrollTo] = useState<{ id: string; seq: number } | null>(null);
   const main = useRef<HTMLElement>(null);
-  const selectBlock = (id: string) => {
-    setSelected(id);
+  const [focus, setFocus] = useState<FocusRequest | null>(null);
+  // Target of the URL already shown (so recording our own navigation in the URL does not trigger it again).
+  const shownTarget = useRef<string | null>(null);
+  const record = (t: Target, replace = false) => {
+    shownTarget.current = targetKey(t);
+    recordRoute({ page: "editor", kind, id, target: t }, { replace });
+  };
+  /** Shows a section and, optionally, scrolls to one of its sub-blocks / comments. */
+  const show = (t: Target) => {
+    setSelected(t.sectionId);
     setPage("block");
     // In document mode, selecting = scrolling to the section.
-    setScrollTo((s) => ({ id, seq: (s?.seq ?? 0) + 1 }));
+    setScrollTo((s) => ({ id: t.sectionId, seq: (s?.seq ?? 0) + 1 }));
+    if (t.subBlockId) setFocus((f) => ({ ...t, seq: (f?.seq ?? 0) + 1, delay: scrollMode === "document" ? 800 : 120 }));
+  };
+  /** Navigates to a place (links, notifications, comment list) and records it in the URL. */
+  const goTo = (t: Target) => {
+    record(t);
+    show(t);
+  };
+  const selectBlock = (blockId: string) => goTo({ sectionId: blockId });
+  // Scroll spy (document mode): keep the URL on the section in view, without adding history entries.
+  const onCurrentChange = (blockId: string) => {
+    setSelected(blockId);
+    if (target?.sectionId !== blockId) record({ sectionId: blockId }, true);
   };
   // Switching mode: keep the current section in view.
   const firstMode = useRef(true);
@@ -92,6 +134,15 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
     if (!project) return;
     if (!selected || !project.blocks.some((b) => b.id === selected)) setSelected(project.blocks[0]?.id ?? null);
   }, [project, selected]);
+
+  // Opening a link (or going back/forward in history) shows the place it names.
+  const tKey = targetKey(target);
+  useEffect(() => {
+    if (!project || !target || tKey === shownTarget.current) return;
+    if (!project.blocks.some((b) => b.id === target.sectionId)) return;
+    shownTarget.current = tKey;
+    show(target);
+  }, [project, tKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addBlock = async (parentId: string | null) => {
     const title = window.prompt(parentId ? "Sub-section title" : "Section title");
@@ -116,10 +167,11 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
 
   return (
     <ExternalChangesContext.Provider value={changes}>
+    <FocusContext.Provider value={focus}>
     <AskAiProvider project={{ kind, id, name: project.name }}>
     <ReferencesProvider>
     <BibliographyProvider onGoTo={selectBlock}>
-    <div className="app">
+    <div className="app" style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}>
       <aside className="sidebar">
         <div className="sidebar-head">
           <h1 title={project.name}>{project.name}</h1>
@@ -151,6 +203,7 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
           </button>
         </div>
       </aside>
+      <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />
       <main
         ref={main}
         className={`main${page !== "block" ? " main-references" : ""}${scrollMode === "document" && page === "block" ? " main-document" : ""}`}
@@ -160,7 +213,7 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
         ) : page === "bibliography" ? (
           <BibliographyPage />
         ) : scrollMode === "document" ? (
-          <DocumentView project={project} scrollRoot={main} scrollTo={scrollTo} onCurrentChange={setSelected} />
+          <DocumentView project={project} scrollRoot={main} scrollTo={scrollTo} onCurrentChange={onCurrentChange} />
         ) : selected ? (
           <BlockView
             key={selected}
@@ -174,10 +227,13 @@ function ProjectEditor({ kind, id, scrollMode }: { kind: NotebookKind; id: strin
         )}
       </main>
       <ExportDialog open={exporting} onClose={() => setExporting(false)} />
+      <ReloadDialog request={reloadRequest} project={project} onClose={() => setReloadRequest(null)} goTo={goTo} />
+      {actionsSlot && createPortal(<EditorActions project={project} goTo={goTo} />, actionsSlot)}
     </div>
     </BibliographyProvider>
     </ReferencesProvider>
     </AskAiProvider>
+    </FocusContext.Provider>
     </ExternalChangesContext.Provider>
   );
 }
@@ -190,6 +246,7 @@ export function App() {
     saveScrollMode(m);
     setScrollModeState(m);
   };
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
   const summary = useQuery({
     queryKey: ["summary", route.kind, route.page === "editor" ? route.id : ""],
     queryFn: () => api.getNotebookSummary(route.kind, (route as { id: string }).id),
@@ -201,11 +258,19 @@ export function App() {
         crumb={route.page === "editor" ? { kind: route.kind, name: summary.data?.name ?? route.id } : undefined}
         scrollMode={route.page === "editor" ? scrollMode : undefined}
         onScrollModeChange={setScrollMode}
+        actionsSlot={route.page === "editor" ? setActionsSlot : undefined}
       />
       {route.page === "home" ? (
         <HomePage kind={route.kind} />
       ) : (
-        <ProjectEditor key={`${route.kind}/${route.id}`} kind={route.kind} id={route.id} scrollMode={scrollMode} />
+        <ProjectEditor
+          key={`${route.kind}/${route.id}`}
+          kind={route.kind}
+          id={route.id}
+          scrollMode={scrollMode}
+          target={route.target}
+          actionsSlot={actionsSlot}
+        />
       )}
     </div>
   );

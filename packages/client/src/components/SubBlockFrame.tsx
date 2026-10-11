@@ -9,6 +9,7 @@ import { originLabel, useExternalChange } from "../live/externalChanges";
 import { registry } from "../subblocks";
 import type { CommentBridge } from "../comments/bridge";
 import { CopyReferenceButton } from "./CopyReferenceButton";
+import { CopyLinkButton } from "./CopyLinkButton";
 import { AskAiButton } from "../ai/AskAiButton";
 import { CitationsButton } from "../bibliography/CitationsButton";
 import { citedKeys, linkedReferences } from "@sourcebook/shared";
@@ -171,6 +172,7 @@ export function SubBlockFrame(props: {
     <>
     {expanded && <div className="subblock-backdrop" onClick={() => setExpanded(false)} />}
     <section
+      id={`subblock-${subBlock.id}`}
       ref={setNodeRef}
       className={`subblock${isDragging ? " dragging" : ""}${expanded ? " expanded" : ""}`}
       style={expanded ? undefined : { transform: CSS.Translate.toString(transform), transition }}
@@ -221,6 +223,7 @@ export function SubBlockFrame(props: {
           inText={subBlock.type === "markdown" ? linkedReferences(String((subBlock.content as { markdown?: string }).markdown ?? "")) : undefined}
         />
         <CopyReferenceButton text={`${props.refLabel ? `${props.refLabel} ` : ""}${notebookUri(`subblocks/${subBlock.id}`)}`} label={props.refLabel} />
+        <CopyLinkButton target={{ sectionId: blockId, subBlockId: subBlock.id }} label={props.refLabel} />
         <button
           className={`icon comment-toggle${(subBlock.commentCount ?? 0) > 0 ? " has-comments" : ""}${props.commentsOpen ? " active" : ""}`}
           title={
@@ -270,17 +273,18 @@ export function SubBlockFrame(props: {
             </svg>
           )}
         </button>
-        <button
-          className="danger"
-          disabled={expanded}
-          onClick={async () => {
-            await flush();
-            props.onDelete(latest.current);
-          }}
-          title="Delete sub-block"
-        >
-          ✕
-        </button>
+        {!expanded && (
+          <button
+            className="danger"
+            onClick={async () => {
+              await flush();
+              props.onDelete(latest.current);
+            }}
+            title="Delete sub-block"
+          >
+            ✕
+          </button>
+        )}
         </div>
       </header>
       {conflict ? (

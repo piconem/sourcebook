@@ -132,20 +132,36 @@ export function CommentsPanel(props: {
   const { activeId, status } = useBridge(bridge);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Resolved threads shown in full (they are collapsed to one line otherwise).
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const panel = useRef<HTMLElement>(null);
 
-  // Bring the active thread into view when it is activated from the editor.
+  // Bring the active thread into view when it is activated from the editor or a link (once the list is loaded).
+  const loaded = !!comments;
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId || !loaded) return;
     panel.current?.querySelector(`[data-thread="${CSS.escape(activeId)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [activeId]);
+  }, [activeId, loaded]);
 
   /** Refetch the thread list and keep the sub-block's comment count in the block cache in sync. */
   const refresh = async () => {
     const list = await qc.fetchQuery({ queryKey: key, queryFn: () => api.getComments(blockId, subBlock.id), staleTime: 0 });
+    const open = list.filter((c) => !c.resolution).length;
     qc.setQueryData(keys.block(blockId), (b: { subBlocks: SubBlock[] } | undefined) =>
-      b && { ...b, subBlocks: b.subBlocks.map((s) => (s.id === subBlock.id ? { ...s, commentCount: list.length } : s)) },
+      b && { ...b, subBlocks: b.subBlocks.map((s) => (s.id === subBlock.id ? { ...s, commentCount: open } : s)) },
     );
+    void qc.invalidateQueries({ queryKey: keys.projectComments });
+  };
+
+  const setResolved = async (c: Comment, resolved: boolean) => {
+    await api.setCommentResolved(blockId, subBlock.id, c.id, resolved);
+    setExpanded((s) => {
+      const next = new Set(s);
+      next.delete(c.id);
+      return next;
+    });
+    if (resolved && activeId === c.id) bridge.setActive(null);
+    await refresh();
   };
 
   const reattach = async (c: Comment) => {
@@ -159,11 +175,14 @@ export function CommentsPanel(props: {
 
   const title = subBlock.title || `${subBlock.type} ${subBlock.order}`;
   const detachedCount = [...status.values()].filter((s) => !s.attached).length;
+  const openCount = comments?.filter((c) => !c.resolution).length ?? 0;
+  const resolvedCount = (comments?.length ?? 0) - openCount;
   return (
     <aside ref={panel} className="comments-panel" aria-label={`Comments on ${title}`}>
       <header className="comments-head">
         <span>
-          Comments{comments?.length ? ` (${comments.length})` : ""} <span className="muted small">· {title}</span>
+          Comments{openCount ? ` (${openCount})` : ""}
+          {resolvedCount > 0 && <span className="muted small"> +{resolvedCount} resolved</span>} <span className="muted small">· {title}</span>
         </span>
         {props.composing === undefined && (
           <button className="icon" title="Comment on the whole sub-block" aria-label="Add comment" onClick={() => props.onCompose(null)}>
@@ -186,27 +205,72 @@ export function CommentsPanel(props: {
       {comments?.length === 0 && props.composing === undefined && <p className="muted small comments-empty">No comments yet.</p>}
       {comments?.map((c) => {
         const st = c.anchor ? status.get(c.id) : undefined;
+        if (c.resolution && !expanded.has(c.id) && activeId !== c.id) {
+          return (
+            <article key={c.id} data-thread={c.id} className="comment-thread resolved collapsed">
+              <span className="comment-resolved-badge" title={`Resolved by ${c.resolution.by.name} · ${fullTime(c.resolution.at)}`}>
+                ✓ Resolved
+              </span>
+              <span className="comment-collapsed-text">
+                <strong>{c.author.name}:</strong> {c.text.split("\n")[0]}
+              </span>
+              <button className="link" onClick={() => setExpanded((s) => new Set(s).add(c.id))}>
+                Show
+              </button>
+            </article>
+          );
+        }
         return (
           <article
             key={c.id}
             data-thread={c.id}
-            className={`comment-thread${activeId === c.id ? " active" : ""}${st?.attached === false ? " is-detached" : ""}`}
+            className={`comment-thread${activeId === c.id ? " active" : ""}${st?.attached === false ? " is-detached" : ""}${c.resolution ? " resolved" : ""}`}
             onClick={(e) => {
               if ((e.target as HTMLElement).closest("button, textarea, a")) return;
               bridge.setActive(activeId === c.id ? null : c.id);
               if (c.anchor && activeId !== c.id) bridge.reveal?.(c.id);
             }}
           >
+            {c.resolution && (
+              <div className="comment-resolved-line">
+                <span className="comment-resolved-badge">✓ Resolved</span>
+                <span className="muted small">
+                  by {c.resolution.by.name} · <time dateTime={c.resolution.at} title={fullTime(c.resolution.at)}>{relativeTime(c.resolution.at)}</time>
+                </span>
+                <button
+                  className="link"
+                  onClick={() =>
+                    setExpanded((s) => {
+                      const next = new Set(s);
+                      next.delete(c.id);
+                      return next;
+                    })
+                  }
+                >
+                  Hide
+                </button>
+              </div>
+            )}
             {c.anchor && <Quote anchor={c.anchor} status={st} />}
             <Entry
               kind="comment"
               entry={c}
               onDelete={() => api.deleteComment(blockId, subBlock.id, c.id).then(refresh)}
               actions={
+                <>
+                <button
+                  className="icon comment-resolve"
+                  title={c.resolution ? "Reopen this thread" : "Resolve: mark this thread as done"}
+                  aria-label={c.resolution ? "Reopen" : "Resolve"}
+                  onClick={() => setResolved(c, !c.resolution)}
+                >
+                  {c.resolution ? "↺" : "✓"}
+                </button>
                 <AskAiButton
                   className="icon ask-ai-btn thread-ask-ai"
                   target={() => ({ kind: "comment", ref: props.refLabel ?? subBlock.id, id: subBlock.id, type: subBlock.type, title: subBlock.title, commentId: c.id, author: c.author.name, excerpt: c.text })}
                 />
+                </>
               }
             />
             {c.replies.map((r) => (

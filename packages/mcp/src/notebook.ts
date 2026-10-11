@@ -1,11 +1,14 @@
 import {
+  choiceType,
   citedKeys,
+  questionType,
   linkedReferences,
   outlineNumbers,
   withDepth,
   type Block,
   type CommentView,
   type Project,
+  type ProjectCommentThread,
   type SubBlock,
   type SubBlockRef,
 } from "@sourcebook/shared";
@@ -20,7 +23,7 @@ export type Resolved =
   | { kind: "comment"; entry: Entry; ref: SubBlockRef; index: number; comment: CommentView; replyId?: string };
 
 /** Types whose content is plain source text the assistant can read and write. */
-export const TEXT_TYPES = ["markdown", "code", "mermaid", "equation"] as const;
+export const TEXT_TYPES = ["markdown", "code", "mermaid", "equation", "question", "choice"] as const;
 export type TextType = (typeof TEXT_TYPES)[number];
 
 /** Source text of a sub-block (what line numbers and text edits refer to), or null for non-text types. */
@@ -34,6 +37,10 @@ export function sourceText(sub: { type: string; content: unknown }): string | nu
       return String(c.code ?? "");
     case "equation":
       return String(c.latex ?? "");
+    case "question":
+      return questionType.serialize(c as never).source;
+    case "choice":
+      return choiceType.serialize(c as never).source;
     default:
       return null;
   }
@@ -50,6 +57,16 @@ export function contentFor(type: string, text: string, opts: { language?: string
       return { code: text };
     case "equation":
       return { latex: text };
+    case "question":
+      return questionType.deserialize(text);
+    case "choice":
+      try {
+        return choiceType.deserialize(text);
+      } catch (e) {
+        throw new RefError(
+          `Invalid choice JSON (${(e as Error).message.split("\n")[0]}). Expected {"question": "...", "mode": "single"|"multiple", "options": [{"id": "a", "text": "..."}], "selected": ["a"], "note": "..."}.`,
+        );
+      }
     default:
       throw new RefError(`${type} sub-blocks cannot be written as text (supported: ${TEXT_TYPES.join(", ")}).`);
   }
@@ -194,19 +211,20 @@ export class NotebookView {
 
   /** Finds a comment or reply by id (optionally within one sub-block). */
   async findComment(id: string, inSubBlock?: string): Promise<Extract<Resolved, { kind: "comment" }>> {
-    for (const entry of this.data.blocks) {
-      const block = await this.block(entry.id);
-      for (const [i, sub] of block.subBlocks.entries()) {
-        if (inSubBlock && sub.id !== inSubBlock) continue;
-        if (!sub.commentCount) continue;
-        const comments = await this.comments(entry.id, sub.id);
-        for (const c of comments) {
-          const reply = c.replies.find((r) => r.id === id);
-          if (c.id === id || reply) return { kind: "comment", entry, ref: entry.subBlocks[i], index: i + 1, comment: c, replyId: reply?.id };
-        }
-      }
+    for (const t of await this.threads()) {
+      if (inSubBlock && t.subBlockId !== inSubBlock) continue;
+      const c = t.comment;
+      const reply = c.replies.find((r) => r.id === id);
+      const entry = this.data.blocks.find((b) => b.id === t.blockId);
+      const ref = entry?.subBlocks.find((s) => s.id === t.subBlockId);
+      if ((c.id === id || reply) && entry && ref) return { kind: "comment", entry, ref, index: t.subBlockIndex, comment: c, replyId: reply?.id };
     }
     throw new RefError(`Nothing with id "${id}" in ${projectLabel(this.project)} (no section, sub-block or comment). Call get_outline or list_comments.`);
+  }
+
+  /** Every comment thread of the project (open and resolved), in document order. */
+  threads(status: "open" | "resolved" | "all" = "all") {
+    return this.api.json<{ threads: ProjectCommentThread[] }>("GET", `${this.base}/comments?status=${status}`).then((r) => r.threads);
   }
 
   comments(blockId: string, subBlockId: string) {
@@ -260,7 +278,7 @@ export class NotebookView {
   formatSubBlock(entry: Entry, sub: SubBlock, index: number, opts: { lineNumbers: boolean; lines?: LineRange }): string {
     const header = [
       `${this.subLabel(entry, sub, index)} in ${this.sectionLabel(entry)}`,
-      `uri: ${this.subUri(sub)} · rev ${sub.rev ?? 0}${sub.type === "code" ? ` · language ${(sub.content as { language?: string }).language}` : ""}${sub.commentCount ? ` · ${sub.commentCount} comment thread(s) (list_comments)` : ""}`,
+      `uri: ${this.subUri(sub)} · rev ${sub.rev ?? 0}${sub.type === "code" ? ` · language ${(sub.content as { language?: string }).language}` : ""}${sub.commentCount ? ` · ${sub.commentCount} open comment thread(s) (list_comments)` : ""}`,
     ];
     if (sub.objective) header.push(`objective: ${sub.objective}`);
     const cites = citationSummary(sub);
@@ -296,7 +314,8 @@ export class NotebookView {
         : `${this.subRef(entry, index)} (DETACHED: the quoted text is gone)`
       : `${this.subRef(entry, index)} (whole sub-block)`;
     const who = (a: CommentView["author"]) => `${a.name} (@${a.username}${a.kind === "assistant" ? ", assistant" : ""})`;
-    const out = [`[comment ${c.id}] ${where} — ${who(c.author)}, ${c.createdAt}`];
+    const state = c.resolution ? ` — RESOLVED by ${who(c.resolution.by)}, ${c.resolution.at}` : "";
+    const out = [`[comment ${c.id}] ${where} — ${who(c.author)}, ${c.createdAt}${state}`];
     if (c.anchor) out.push(`  quote: "${c.anchor.exact.length > 200 ? `${c.anchor.exact.slice(0, 200)}…` : c.anchor.exact}"`);
     out.push(...c.text.split("\n").map((l) => `  ${l}`));
     for (const r of c.replies) {

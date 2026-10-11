@@ -61,7 +61,7 @@ export function registerReadTools({ server, api, open }: ToolContext) {
     {
       title: "Read a sub-block",
       description:
-        "Reads one sub-block's source (Markdown, code, Mermaid, LaTeX) with line numbers — the numbers used by edit_subblock_text and line comments. Images and drawings are described. A line range (§2.1#3:L10-20) limits the output.",
+        "Reads one sub-block's source (Markdown, code, Mermaid, LaTeX; JSON for question and choice) with line numbers — the numbers used by edit_subblock_text and line comments. Images and drawings are described. A line range (§2.1#3:L10-20) limits the output.",
       inputSchema: { project: projectParam, subblock: refParam("Sub-block"), lineNumbers: z.boolean().default(true) },
       annotations: READ,
     },
@@ -135,25 +135,23 @@ export function registerReadTools({ server, api, open }: ToolContext) {
     {
       title: "List comments",
       description:
-        "Comment threads (with replies) of a sub-block, of a section, or of the whole project: author, time, the quoted text and where it is now (§x#n:Lk), or DETACHED if the text is gone.",
+        "Comment threads (with replies) of a sub-block, of a section, or of the whole project: author, time, the quoted text and where it is now (§x#n:Lk), or DETACHED if the text is gone. Only open threads unless include_resolved is set (resolved ones are marked RESOLVED).",
       inputSchema: {
         project: projectParam,
         target: z.string().optional().describe("Optional section or sub-block reference; omit for the whole project"),
+        include_resolved: z.boolean().optional().describe("Also list resolved threads"),
       },
       annotations: READ,
     },
-    run(async ({ project, target }) => {
+    run(async ({ project, target, include_resolved }) => {
       const nb = await open(project);
       const r = target ? await nb.resolve(target) : null;
-      const entries = r ? [r.entry] : nb.data.blocks;
       const out: string[] = [];
-      for (const entry of entries) {
-        const block = await nb.block(entry.id);
-        for (const [i, sub] of block.subBlocks.entries()) {
-          if (r && r.kind !== "section" && r.ref.id !== sub.id) continue;
-          if (!sub.commentCount) continue;
-          for (const c of await nb.comments(entry.id, sub.id)) out.push(nb.formatComment(entry, i + 1, c));
-        }
+      for (const t of await nb.threads(include_resolved ? "all" : "open")) {
+        if (r && r.entry.id !== t.blockId) continue;
+        if (r && r.kind !== "section" && r.ref.id !== t.subBlockId) continue;
+        const entry = nb.data.blocks.find((b) => b.id === t.blockId);
+        if (entry) out.push(nb.formatComment(entry, t.subBlockIndex, t.comment));
       }
       return out.length ? out.join("\n\n") : "No comments.";
     }),

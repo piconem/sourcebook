@@ -3,9 +3,11 @@ import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-ki
 import { useQueryClient } from "@tanstack/react-query";
 import type { Block, BlockDeletionImpact, CommentAnchor, SubBlock } from "@sourcebook/shared";
 import { CommentBridge } from "../comments/bridge";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useRef, useState } from "react";
+import { FocusContext, flash } from "../live/focus";
 import { api, notebookUri } from "../api/client";
 import { CopyReferenceButton } from "./CopyReferenceButton";
+import { CopyLinkButton } from "./CopyLinkButton";
 import { AskAiButton } from "../ai/AskAiButton";
 import { CitationsButton } from "../bibliography/CitationsButton";
 import { AttachmentsButton } from "../references/AttachmentsButton";
@@ -35,7 +37,7 @@ export function BlockView({
   const [title, setTitle] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [subDelete, setSubDelete] = useState<{ sub: SubBlock; assets: string[] } | null>(null);
+  const [subDelete, setSubDelete] = useState<{ sub: SubBlock; assets: string[]; label: string } | null>(null);
   const [deleteAssets, setDeleteAssets] = useState(true);
   const [blockDelete, setBlockDelete] = useState<BlockDeletionImpact | null>(null);
   const [addingObjective, setAddingObjective] = useState(false);
@@ -76,6 +78,27 @@ export function BlockView({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   useEffect(() => setTitle(block?.title ?? ""), [block?.title]);
 
+  // Deep link / notification: scroll to a sub-block of this section, and open one of its comments.
+  const focus = useContext(FocusContext);
+  const handledFocus = useRef(0);
+  useEffect(() => {
+    if (!block || !focus || focus.sectionId !== blockId || !focus.subBlockId || handledFocus.current === focus.seq) return;
+    const { subBlockId, commentId } = focus;
+    if (!block.subBlocks.some((s) => s.id === subBlockId)) return;
+    handledFocus.current = focus.seq;
+    if (commentId) showComments(subBlockId, true);
+    setTimeout(() => {
+      const el = document.getElementById(`subblock-${subBlockId}`);
+      el?.scrollIntoView({ block: commentId ? "start" : "center", behavior: "smooth" });
+      flash(el);
+      if (commentId) {
+        const bridge = bridgeFor(subBlockId);
+        bridge.setActive(commentId);
+        bridge.reveal?.(commentId);
+      }
+    }, focus.delay);
+  }, [focus, block, blockId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (error) return <p className="render-error">{(error as Error).message}</p>;
   if (!block) return <p className="muted">Loading…</p>;
 
@@ -87,7 +110,10 @@ export function BlockView({
       setActionError((e as Error).message);
     } finally {
       qc.invalidateQueries({ queryKey: keys.block(blockId) });
-      if (project) qc.invalidateQueries({ queryKey: keys.project });
+      if (project) {
+        qc.invalidateQueries({ queryKey: keys.project });
+        qc.invalidateQueries({ queryKey: keys.projectComments });
+      }
     }
   };
 
@@ -111,11 +137,11 @@ export function BlockView({
     }, { project: true });
   };
 
-  const requestSubDelete = (sub: SubBlock, latestContent: unknown) => {
+  /** Always asks for confirmation; files the sub-block references are listed (and optionally deleted too). */
+  const requestSubDelete = (sub: SubBlock, latestContent: unknown, label: string) => {
     const assets = registry.get(sub.type)?.assetsOf?.(latestContent as never) ?? [];
-    if (!assets.length) return void deleteSub(sub, false);
     setDeleteAssets(true);
-    setSubDelete({ sub, assets });
+    setSubDelete({ sub, assets, label });
   };
 
   const requestBlockDelete = () =>
@@ -139,6 +165,7 @@ export function BlockView({
       <div className={`block-head depth-${Math.min(depth, 3)}`}>
         {number && <span className="block-number">{number}</span>}
         <CopyReferenceButton text={`${number ? `§${number} ` : ""}${notebookUri(`sections/${blockId}`)}`} label={number ? `§${number}` : undefined} />
+        <CopyLinkButton target={{ sectionId: blockId }} label={number ? `§${number}` : undefined} />
         <AskAiButton target={() => ({ kind: "section", number: number ?? "?", id: blockId, title: block.title })} />
         <CitationsButton blockId={blockId} citations={block.citations} />
         <AttachmentsButton blockId={blockId} paths={block.references} />
@@ -181,21 +208,29 @@ export function BlockView({
         actions={
           <>
             <button onClick={() => setSubDelete(null)}>Cancel</button>
-            <button className="danger solid" onClick={() => subDelete && deleteSub(subDelete.sub, deleteAssets)}>
+            <button className="danger solid" onClick={() => subDelete && deleteSub(subDelete.sub, subDelete.assets.length > 0 && deleteAssets)}>
               Delete
             </button>
           </>
         }
       >
-        <p>This sub-block references files stored in the project folder:</p>
-        <ul className="file-list">
-          {subDelete?.assets.map((a) => <li key={a}>blocks/{block.folder}/{a}</li>)}
-        </ul>
-        <label className="check">
-          <input type="checkbox" checked={deleteAssets} onChange={(e) => setDeleteAssets(e.target.checked)} />
-          Also delete these files from the project folder
-        </label>
-        <p className="muted small">Files still referenced by other sub-blocks of this section are always kept.</p>
+        <p>
+          Delete {subDelete?.label} ({registry.get(subDelete?.sub.type ?? "")?.label ?? subDelete?.sub.type}) and its
+          comments? This cannot be undone.
+        </p>
+        {!!subDelete?.assets.length && (
+          <>
+            <p>This sub-block references files stored in the project folder:</p>
+            <ul className="file-list">
+              {subDelete.assets.map((a) => <li key={a}>blocks/{block.folder}/{a}</li>)}
+            </ul>
+            <label className="check">
+              <input type="checkbox" checked={deleteAssets} onChange={(e) => setDeleteAssets(e.target.checked)} />
+              Also delete these files from the project folder
+            </label>
+            <p className="muted small">Files still referenced by other sub-blocks of this section are always kept.</p>
+          </>
+        )}
       </Dialog>
 
       <Dialog
@@ -252,7 +287,7 @@ export function BlockView({
               <SubBlockFrame
                 blockId={blockId}
                 subBlock={s}
-                onDelete={(latestContent) => requestSubDelete(s, latestContent)}
+                onDelete={(latestContent) => requestSubDelete(s, latestContent, number ? `§${number}#${i + 1}` : `sub-block #${i + 1}`)}
                 commentsOpen={commentsOpen.has(s.id)}
                 onToggleComments={() => showComments(s.id, !commentsOpen.has(s.id))}
                 onAddComment={() => startComment(s.id)}

@@ -5,6 +5,8 @@ export function PopoverMenu(props: {
   label: string;
   title: string;
   icon: ReactNode;
+  /** Extra class of the menu (e.g. a wider panel). */
+  className?: string;
   children(close: () => void): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -34,7 +36,7 @@ export function PopoverMenu(props: {
         {props.icon}
       </button>
       {open && (
-        <div className="popover-menu" role="menu" aria-label={props.label}>
+        <div className={`popover-menu${props.className ? ` ${props.className}` : ""}`} role="menu" aria-label={props.label}>
           {props.children(() => setOpen(false))}
         </div>
       )}

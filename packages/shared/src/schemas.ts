@@ -282,10 +282,16 @@ export const CommentReplySchema = z.object({
 });
 export type CommentReply = z.infer<typeof CommentReplySchema>;
 
+/** Who closed a thread and when ("resolved": nothing left to do). */
+export const CommentResolutionSchema = z.object({ by: AuthorSchema, at: z.string() });
+export type CommentResolution = z.infer<typeof CommentResolutionSchema>;
+
 export const CommentSchema = CommentReplySchema.extend({
   /** Absent for comments on the whole sub-block. */
   anchor: CommentAnchorSchema.optional(),
   replies: z.array(CommentReplySchema),
+  /** Present when the thread is resolved; open threads have none. */
+  resolution: CommentResolutionSchema.optional(),
 });
 export type Comment = z.infer<typeof CommentSchema>;
 
@@ -318,6 +324,25 @@ export type CommentView = Comment & {
   /** Current source lines of the quote; null when it no longer exists (detached). Absent if not anchored. */
   resolved?: { lines: { first: number; last: number } } | null;
 };
+
+export const ResolveCommentBodySchema = z.object({
+  /** Defaults to the current user profile. */
+  author: AuthorSchema.optional(),
+});
+
+/** A thread in the project-wide comment list (document order), with where it is. */
+export interface ProjectCommentThread {
+  blockId: string;
+  sectionTitle: string;
+  subBlockId: string;
+  /** 1-based position of the sub-block in its section (the "#3" of §2.1#3). */
+  subBlockIndex: number;
+  subBlockType: string;
+  subBlockTitle?: string;
+  comment: CommentView;
+}
+
+export const ProjectCommentsQuerySchema = z.object({ status: z.enum(["open", "resolved", "all"]).default("all") });
 
 export const CommentParamsSchema = SubBlockParamsSchema.extend({ commentId: IdSchema });
 export const ReplyParamsSchema = CommentParamsSchema.extend({ replyId: IdSchema });
@@ -364,15 +389,70 @@ export const UpdateProjectBodySchema = z
   .refine((b) => b.name !== undefined || b.description !== undefined, "Nothing to update");
 export type UpdateProjectBody = z.infer<typeof UpdateProjectBodySchema>;
 
+// ---- Change notifications (sent by external applications / assistants) ----
+
+/** A part of the project a notification is about: a section, one of its sub-blocks, or a comment on it. */
+export const ChangeTargetSchema = z
+  .object({
+    blockId: IdSchema,
+    subBlockId: IdSchema.optional(),
+    commentId: IdSchema.optional(),
+    /** What changed there, in a few words. */
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine((t) => !t.commentId || t.subBlockId, "commentId requires subBlockId");
+export type ChangeTarget = z.infer<typeof ChangeTargetSchema>;
+
+export const CreateNotificationBodySchema = z.object({
+  /** Defaults to the current user profile. */
+  author: AuthorSchema.optional(),
+  /** Short description of the whole change. */
+  summary: z.string().trim().min(1, "Summary is empty").max(300),
+  targets: z.array(ChangeTargetSchema).max(50).default([]),
+  /** Also ask open editors to reload (e.g. at the end of a group of changes). */
+  requestReload: z.boolean().optional(),
+});
+export type CreateNotificationBody = z.input<typeof CreateNotificationBodySchema>;
+
+export const NotificationSchema = z.object({
+  id: IdSchema,
+  createdAt: z.string(),
+  author: AuthorSchema,
+  summary: z.string(),
+  /** Each target with its label when the notification was received (e.g. "§2.1#3 Markdown"). */
+  targets: z.array(z.object({ blockId: IdSchema, subBlockId: IdSchema.optional(), commentId: IdSchema.optional(), note: z.string().optional(), label: z.string() })),
+  read: z.boolean(),
+});
+export type Notification = z.infer<typeof NotificationSchema>;
+export type NotificationTarget = Notification["targets"][number];
+
+/** Contents of a project's notifications.json (newest first). */
+export const NotificationsFileSchema = z.object({ version: z.literal(1), notifications: z.array(NotificationSchema) });
+
+export const NotificationParamsSchema = z.object({ notificationId: IdSchema });
+
+export const ReloadRequestBodySchema = z.object({
+  author: AuthorSchema.optional(),
+  /** Shown to the user in the reload dialog. */
+  message: z.string().trim().max(500).optional(),
+  /** Notifications that describe the changes (default: the unread ones). */
+  notificationIds: z.array(IdSchema).max(200).optional(),
+});
+export type ReloadRequestBody = z.infer<typeof ReloadRequestBodySchema>;
+
 // ---- Live events ----
 
 /** Change notification streamed to open editors (Server-Sent Events). */
 export interface NotebookEvent {
-  type: "blocks" | "block" | "subblock" | "comments" | "references" | "bibliography";
+  type: "blocks" | "block" | "subblock" | "comments" | "references" | "bibliography" | "notifications" | "reload";
   blockId?: string;
   subBlockId?: string;
   /** New content revision (subblock events). */
   rev?: number;
+  /** Reload requests: who asks, why, and the notifications describing the changes. */
+  author?: Author;
+  message?: string;
+  notificationIds?: string[];
   /** Client that caused the change (value of the x-sourcebook-client header), e.g. "mcp". */
   origin: string;
 }

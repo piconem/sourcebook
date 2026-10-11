@@ -20,7 +20,7 @@ export function scopeUrl(url: string, id = "test", kind = "projects") {
   return url
     .replace(/^\/api\/project(?=$|\?)/, `${base}/notebook`)
     .replace(/^\/api\/project\/(markdown|export)/, `${base}/$1`)
-    .replace(/^\/api\/(blocks|assets|references|bibliography)/, `${base}/$1`);
+    .replace(/^\/api\/(blocks|assets|references|bibliography|comments|notifications|reload-request)/, `${base}/$1`);
 }
 
 /**
