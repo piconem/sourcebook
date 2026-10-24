@@ -5,11 +5,18 @@ import type { ProjectMeta, Registry, SubBlockTypeCore } from "@sourcebook/shared
 import { readJson, writeJsonAtomic } from "../fs/atomic.js";
 import { PROJECT_FILE } from "../store/WorkspaceStore.js";
 import { DEMO_TEMPLATE, buildDemoTemplate } from "./demoTemplate.js";
+import { SPEC_TEMPLATE_IDS, buildFromSpec, loadSpec } from "./specTemplates.js";
 
 const SEEDED_FILE = "seeded.json";
 
-/** Templates shipped with Sourcebook. */
-const BUNDLED = [{ ...DEMO_TEMPLATE, build: buildDemoTemplate }];
+/** Templates shipped with Sourcebook: the demo tour, then the example templates. */
+const BUNDLED = [
+  { ...DEMO_TEMPLATE, build: buildDemoTemplate },
+  ...SPEC_TEMPLATE_IDS.map((id) => {
+    const spec = loadSpec(id);
+    return { id, name: spec.name, description: spec.description, build: (dir: string, registry: Registry<SubBlockTypeCore<any>>) => buildFromSpec(dir, registry, spec) };
+  }),
+];
 
 /**
  * Adds the bundled templates to the workspace, each once: `<dataDir>/seeded.json` remembers which ones were added,

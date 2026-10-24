@@ -1,0 +1,374 @@
+{
+ "name": "Scientific Paper",
+ "description": "Research paper structure: idea, context and motivation, related work, method, experimental design, results, discussion.",
+ "sections": [
+  {
+   "title": "Title and Abstract",
+   "objective": "Summarise the whole paper so that a reader can decide in one minute whether to read it.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Working title",
+     "content": {
+      "markdown": "_A specific, informative title (ideally stating the contribution or main finding)._\n\n[Working title]\n"
+     }
+    },
+    {
+     "type": "markdown",
+     "title": "Abstract",
+     "objective": "Write it last, but keep a draft from day one to stay focused.",
+     "content": {
+      "markdown": "_150–250 words, one or two sentences per point:_\n\n1. **Context:** [the broader area and why it matters]\n2. **Gap:** [what is missing or unsolved]\n3. **Approach:** [what we propose]\n4. **Results:** [main quantitative findings]\n5. **Implications:** [why the results matter]\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Introduction",
+   "objective": "Motivate the problem, state the research questions and the contributions clearly.",
+   "children": [
+    {
+     "title": "Context and Motivation",
+     "objective": "Explain the broader context and why the problem is important now.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Context",
+       "content": {
+        "markdown": "_From general to specific: the field, the practical or scientific need, evidence that the problem matters (numbers, trends, citations)._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Problem Statement and Research Questions",
+     "objective": "Formulate the precise problem and the questions the paper answers.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Research questions",
+       "objective": "Every RQ must be answered explicitly in the Results or Discussion.",
+       "content": {
+        "markdown": "- **RQ1:** [Question answerable by the experiments]\n- **RQ2:** [Question]\n- **RQ3:** [Question]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Contributions",
+     "objective": "List what is new in this work, in verifiable terms.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Contributions",
+       "content": {
+        "markdown": "This paper makes the following contributions:\n\n1. [A new method / model / dataset / analysis …]\n2. [An evaluation showing …]\n3. [An open-source implementation / artifact …]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Paper Organisation",
+     "objective": "Guide the reader through the rest of the paper.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Roadmap",
+       "content": {
+        "markdown": "Section 2 reviews related work. Section 3 presents [...]. Section 4 describes the experimental design, Section 5 reports the results, Section 6 discusses them and Section 7 concludes.\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Background and Related Work",
+   "objective": "Give the background needed and position the work against the state of the art.",
+   "children": [
+    {
+     "title": "Background",
+     "objective": "Introduce the concepts and notation the reader needs.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Key concepts",
+       "content": {
+        "markdown": "_Define the concepts, models and notation used in the rest of the paper._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Related Work",
+     "objective": "Group prior work by approach and explain the limitations this paper addresses.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Comparison with prior work",
+       "objective": "Keep the BibTeX file in References and cite by key.",
+       "content": {
+        "markdown": "| Work | Approach | Strengths | Limitations | How we differ |\n| --- | --- | --- | --- | --- |\n| [Author et al., Year] | [Method] | [...] | [...] | [...] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Research Gap",
+     "objective": "State precisely what is missing in the state of the art.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Gap",
+       "content": {
+        "markdown": "_One paragraph: despite [prior work], no approach [does X] under [conditions Y]._\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Proposed Approach",
+   "objective": "Describe the method so that it could be reimplemented from the paper alone.",
+   "children": [
+    {
+     "title": "Overview",
+     "objective": "Give the big picture of the approach before the details.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Method pipeline",
+       "content": {
+        "code": "flowchart LR\n  data[(Input data)] --> pre[Preprocessing]\n  pre --> model[Proposed model]\n  model --> post[Post-processing]\n  post --> out[/Output/]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Formalisation",
+     "objective": "Define the problem and the method formally.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Problem definition",
+       "content": {
+        "markdown": "_Given [inputs], find [outputs] that minimise/maximise [objective], subject to [constraints]._\n"
+       }
+      },
+      {
+       "type": "equation",
+       "title": "Objective function",
+       "objective": "Replace with the actual formulation and define every symbol.",
+       "content": {
+        "latex": "\\theta^{*} = \\arg\\min_{\\theta} \\; \\frac{1}{N}\\sum_{i=1}^{N} \\mathcal{L}\\big(f_{\\theta}(x_i), y_i\\big) + \\lambda \\, \\Omega(\\theta)"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Algorithm",
+     "objective": "Present the algorithm and its complexity.",
+     "subs": [
+      {
+       "type": "code",
+       "title": "Algorithm sketch",
+       "content": {
+        "language": "python",
+        "code": "def proposed_method(data, params):\n    \"\"\"Replace with pseudocode or a minimal reference implementation.\"\"\"\n    model = initialise(params)\n    for epoch in range(params.epochs):\n        for batch in data:\n            loss = model.loss(batch)\n            model.update(loss)\n    return model\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Complexity",
+       "content": {
+        "markdown": "_Time and space complexity, with respect to [n, d, …]._\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Experimental Design",
+   "objective": "Plan experiments that answer each research question convincingly and reproducibly.",
+   "children": [
+    {
+     "title": "Hypotheses",
+     "objective": "State the testable hypotheses linked to the research questions.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Hypotheses",
+       "content": {
+        "markdown": "| Hypothesis | Related RQ | Experiment | Supported if |\n| --- | --- | --- | --- |\n| H1: [statement] | RQ1 | [Exp. 1] | [e.g. significant improvement, p < 0.05] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Datasets and Setup",
+     "objective": "Describe data, splits and the experimental environment.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Datasets",
+       "content": {
+        "markdown": "| Dataset | Size | Task | Split | Source / license |\n| --- | --- | --- | --- | --- |\n| [Name] | [N samples] | [Classification] | [70/15/15] | [URL, CC-BY] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Baselines",
+     "objective": "Choose the methods to compare against and justify the choice.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Baselines",
+       "content": {
+        "markdown": "- **[Baseline 1]** — [why it is a fair comparison]\n- **[Baseline 2]** — [state-of-the-art method]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Evaluation Metrics",
+     "objective": "Define how success is measured and why these metrics are appropriate.",
+     "subs": [
+      {
+       "type": "equation",
+       "title": "Main metric",
+       "content": {
+        "latex": "F_1 = 2 \\cdot \\frac{\\text{precision} \\cdot \\text{recall}}{\\text{precision} + \\text{recall}}"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Metrics and statistics",
+       "content": {
+        "markdown": "_Metrics, number of runs/seeds, confidence intervals and statistical tests used._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Reproducibility",
+     "objective": "Give everything needed to reproduce the results.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Implementation details",
+       "content": {
+        "markdown": "- **Hardware:** [GPU/CPU, memory]\n- **Software:** [framework and versions]\n- **Hyper-parameters:** [values and how they were selected]\n- **Code and data:** [repository URL, DOI]\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Results",
+   "objective": "Report the findings objectively, organised by research question.",
+   "children": [
+    {
+     "title": "Main Results",
+     "objective": "Answer the main research questions with the key tables and figures.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Main comparison",
+       "content": {
+        "markdown": "| Method | Metric 1 ↑ | Metric 2 ↓ | Runtime |\n| --- | --- | --- | --- |\n| Baseline 1 | … | … | … |\n| **Ours** | **…** | **…** | … |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Ablation Study",
+     "objective": "Show the contribution of each component of the approach.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Ablations",
+       "content": {
+        "markdown": "| Variant | Metric 1 | Δ vs full |\n| --- | --- | --- |\n| Full model | … | — |\n| w/o [component] | … | … |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Further Analysis",
+     "objective": "Explore sensitivity, qualitative examples and failure cases.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Analysis",
+       "content": {
+        "markdown": "_Sensitivity to hyper-parameters, qualitative examples, error analysis._\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Discussion",
+   "objective": "Interpret the results, their implications and their limits.",
+   "children": [
+    {
+     "title": "Interpretation and Implications",
+     "objective": "Explain what the results mean for the research questions and the field.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Discussion",
+       "content": {
+        "markdown": "_For each RQ: answer, evidence, and what it implies._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Limitations and Threats to Validity",
+     "objective": "Discuss internal, external and construct validity honestly.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Threats",
+       "content": {
+        "markdown": "- **Internal:** [...]\n- **External:** [...]\n- **Construct:** [...]\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Conclusion and Future Work",
+   "objective": "Close with the take-away message and the next steps.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Conclusion",
+     "content": {
+      "markdown": "_Restate the problem, the contribution and the main results in one paragraph; then two or three concrete future directions._\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Data and Code Availability",
+   "objective": "State where data, code and other artifacts can be found.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Artifacts",
+     "content": {
+      "markdown": "- Code: [URL]\n- Data: [URL / DOI]\n- License: [...]\n\n_Keep the bibliography (.bib) and related papers in References._\n"
+     }
+    }
+   ]
+  }
+ ]
+}

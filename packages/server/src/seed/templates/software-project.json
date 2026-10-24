@@ -1,0 +1,916 @@
+{
+ "name": "Software Project",
+ "description": "A software project worked on alone or with an AI assistant: instructions, objectives, requirements, open questions, decisions (ADR), architecture, design, data, project structure, testing, plan and issues.",
+ "sections": [
+  {
+   "title": "Prompts",
+   "objective": "Ready-to-paste prompts that brief an AI assistant on how to work on this project (MCP / REST API, structure, behaviour). Replace <project-id> before using them.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Prompt (English)",
+     "objective": "English version of the briefing prompt for an AI assistant.",
+     "content": {
+      "markdown": "You are working with me on a software project kept in **Sourcebook**, a local block-based design notebook.\nThe project id is `<project-id>`. Sourcebook is the source of truth: requirements, open questions,\ndecisions and design live there before they become code.\n\n## How to access the project\n\nUse the **Sourcebook MCP tools** (pass `project: \"<project-id>\"`):\n\n- **Read:** `get_outline` (sections, objectives, sub-block summaries — start here), `read_section`,\n  `read_subblock` (numbered source lines and `rev`), `read_document` (everything), `search`,\n  `list_comments`, `list_notifications`, `list_references` / `read_reference`, `list_bibliography`.\n- **Write:** `edit_subblock_text` (targeted find/replace or line edits — preferred), `update_subblock`,\n  `add_subblock`, `create_section`, `update_section`, `move_section`, `move_subblock`.\n- **Discuss:** `add_comment` (on a sub-block, lines or a quote), `reply_to_comment`, `resolve_comment`.\n- **Report:** `notify_changes` (summary + parts involved), `request_reload`.\n- Ask me before any destructive tool (`delete_section`, `delete_subblock`, `delete_comment`).\n\nWithout MCP, use the REST API at `http://127.0.0.1:4000/api/projects/<project-id>`: `GET /notebook`,\n`GET /markdown`, `GET /blocks/{id}`, `PATCH /blocks/{id}/subblocks/{subId}` (with `expectedRev`),\n`POST /blocks/{id}/subblocks/{subId}/comments`, `GET /comments?status=open`, `POST /notifications`,\n`POST /reload-request`.\n\n## How the project is structured\n\n- **Sections** are numbered (§1, §2.1 …); each holds ordered **sub-blocks** (§2.1#3) of type markdown,\n  code, mermaid, equation, image, drawing, **question** (question + answer) or **choice** (multiple choice\n  with a note). Question and choice sources are JSON. Lines are referenced as §2.1#3:L10-14.\n- Each section and sub-block may have an **objective**: what it must contain. Read it before writing.\n- Outline numbers change when sections move; ids never do. Quote both when you report.\n- Main parts: _Instructions_ (conventions, **Rules for the Assistant**, Glossary) → Vision & Objectives →\n  Requirements (FR-xx, NFR-xx, UC-xx) → Open Questions (Q-xx) → Decisions (ADR-xxx, with an index and a\n  status 🟡 Proposed · 🟢 Approved · 🔴 Rejected) → Architecture → Design → Data Models → Project Structure\n  → Testing → Development Plan (T-xx) → Issues (BUG-xx, TD-xx) → Risks.\n\n## How to behave\n\n1. **First** read _Instructions_ completely (especially _Rules for the Assistant_ and the _Glossary_), then\n   `get_outline`. Follow those rules; they override this prompt where they differ.\n2. **Read before writing.** Use `read_subblock` and pass `expectedRev` when I may be editing the same part;\n   on a conflict, re-read and retry. Prefer small `edit_subblock_text` edits to full rewrites.\n3. Edit directly only `[Draft]` sections; for `[Review]` / `[Approved]` ones, propose changes as comments.\n4. **Never** set an ADR to Approved or Rejected yourself, and never add requirements, technologies or scope\n   that are not in the document — ask, or record a question (Q-xx) in _Open Questions_.\n5. Keep IDs stable, use the next free number for new items, and keep the ADR index in sync.\n6. Before writing code, read Requirements, the **approved** ADRs, Design, Data Models and Project Structure\n   (layout and coding conventions); reference the IDs you implement.\n7. When you finish a group of changes: resolve the comments you handled, send **one** `notify_changes` with a\n   short summary and the parts involved (§ references or comment ids), and call `request_reload` if I should\n   reload to see the whole result. Then tell me what you changed, with references.\n8. If something is unclear, ask me instead of guessing.\n"
+     }
+    },
+    {
+     "type": "markdown",
+     "title": "Prompt (Italiano)",
+     "objective": "Versione italiana del prompt di istruzioni per un assistente AI.",
+     "content": {
+      "markdown": "Stai lavorando con me a un progetto software gestito in **Sourcebook**, un quaderno di progettazione locale\na blocchi. L'id del progetto è `<project-id>`. Sourcebook è la fonte di verità: requisiti, domande aperte,\ndecisioni e design stanno lì prima di diventare codice.\n\n## Come accedere al progetto\n\nUsa i **tool MCP di Sourcebook** (passa `project: \"<project-id>\"`):\n\n- **Lettura:** `get_outline` (sezioni, objective, riassunto dei blocchi — parti da qui), `read_section`,\n  `read_subblock` (righe numerate del sorgente e `rev`), `read_document` (tutto), `search`,\n  `list_comments`, `list_notifications`, `list_references` / `read_reference`, `list_bibliography`.\n- **Scrittura:** `edit_subblock_text` (modifiche mirate trova/sostituisci o per righe — da preferire),\n  `update_subblock`, `add_subblock`, `create_section`, `update_section`, `move_section`, `move_subblock`.\n- **Discussione:** `add_comment` (su un blocco, su righe o su una citazione), `reply_to_comment`,\n  `resolve_comment`.\n- **Resoconto:** `notify_changes` (sintesi + parti coinvolte), `request_reload`.\n- Chiedimi conferma prima di ogni tool distruttivo (`delete_section`, `delete_subblock`, `delete_comment`).\n\nSenza MCP usa le API REST su `http://127.0.0.1:4000/api/projects/<project-id>`: `GET /notebook`,\n`GET /markdown`, `GET /blocks/{id}`, `PATCH /blocks/{id}/subblocks/{subId}` (con `expectedRev`),\n`POST /blocks/{id}/subblocks/{subId}/comments`, `GET /comments?status=open`, `POST /notifications`,\n`POST /reload-request`.\n\n## Com'è strutturato il progetto\n\n- Le **sezioni** sono numerate (§1, §2.1 …); ognuna contiene **blocchi** ordinati (§2.1#3) di tipo markdown,\n  code, mermaid, equation, image, drawing, **question** (domanda + risposta) o **choice** (scelta multipla\n  con nota). Il sorgente di question e choice è JSON. Le righe si indicano come §2.1#3:L10-14.\n- Sezioni e blocchi possono avere un **objective**: cosa devono contenere. Leggilo prima di scrivere.\n- I numeri dell'outline cambiano quando le sezioni vengono spostate, gli id no. Riporta entrambi.\n- Parti principali: _Instructions_ (convenzioni, **Rules for the Assistant**, Glossary) → Vision & Objectives →\n  Requirements (FR-xx, NFR-xx, UC-xx) → Open Questions (Q-xx) → Decisions (ADR-xxx, con un indice e uno\n  stato 🟡 Proposed · 🟢 Approved · 🔴 Rejected) → Architecture → Design → Data Models → Project Structure\n  → Testing → Development Plan (T-xx) → Issues (BUG-xx, TD-xx) → Risks.\n\n## Come comportarti\n\n1. **Per prima cosa** leggi tutta la sezione _Instructions_ (in particolare _Rules for the Assistant_ e il\n   _Glossary_), poi `get_outline`. Segui quelle regole: dove differiscono, prevalgono su questo prompt.\n2. **Leggi prima di scrivere.** Usa `read_subblock` e passa `expectedRev` quando potrei modificare la stessa\n   parte; in caso di conflitto rileggi e riprova. Preferisci piccole modifiche con `edit_subblock_text` alle\n   riscritture complete.\n3. Modifica direttamente solo le sezioni `[Draft]`; per quelle `[Review]` / `[Approved]` proponi le modifiche\n   con commenti.\n4. **Non** impostare mai tu un ADR come Approved o Rejected, e non aggiungere requisiti, tecnologie o scope che\n   non sono nel documento: chiedimelo, oppure registra una domanda (Q-xx) in _Open Questions_.\n5. Mantieni stabili gli ID, usa il primo numero libero per i nuovi elementi e tieni aggiornato l'indice degli ADR.\n6. Prima di scrivere codice leggi Requirements, gli ADR **approvati**, Design, Data Models e Project Structure\n   (struttura e convenzioni di codice); cita gli ID che implementi.\n7. Quando finisci un gruppo di modifiche: risolvi i commenti che hai gestito, invia **una** `notify_changes`\n   con una breve sintesi e le parti coinvolte (riferimenti § o id dei commenti) e chiama `request_reload` se\n   devo ricaricare per vedere il risultato completo. Poi dimmi cosa hai cambiato, con i riferimenti.\n8. Se qualcosa non è chiaro, chiedimelo invece di indovinare.\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Instructions",
+   "objective": "Explain how this document is organised and how people and AI assistants must work on it. Read this first.",
+   "children": [
+    {
+     "title": "How to Use This Document",
+     "objective": "Conventions every contributor (human or assistant) follows: order of work, identifiers, section status.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Conventions",
+       "objective": "The rules of the document in one page.",
+       "content": {
+        "markdown": "This document is the **source of truth** for the project: ideas, requirements and decisions are written\nhere before they become code.\n\n**Suggested order of work:** Objectives → Requirements → Open Questions → Decisions (ADR) → Architecture →\nDesign → Data Models → Project Structure → Testing → Development Plan. Go back and forth freely: a\nquestion raised while designing goes to _Open Questions_, a decision taken goes to _Decisions (ADR)_.\n\n**Identifiers** — every item that other parts refer to has a stable ID, never reused:\n\n| Prefix | Item | Where |\n| --- | --- | --- |\n| G-xx | Goal | Objectives |\n| FR-xx / NFR-xx | Functional / non-functional requirement | Requirements |\n| UC-xx | Use case or user story | Requirements |\n| Q-xx | Open question | Open Questions |\n| ADR-xxx | Architecture decision record | Decisions (ADR) |\n| T-xx | Task | Development Plan |\n| BUG-xx / TD-xx | Bug / technical debt | Issues, Bugs & Tech Debt |\n\nRefer to items by ID (e.g. \"implements FR-03, follows ADR-002\"), so they can be traced from requirement\nto decision, design, test and task.\n\n**Section status** — write it at the top of the section objective when useful:\n`[Draft]` being written, anyone may edit · `[Review]` complete, discuss with comments ·\n`[Approved]` agreed, change only through a new or updated ADR.\n\n**Placeholders** look like `[text in brackets]` or _italic hints_: replace them, then delete the hints.\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Rules for the Assistant",
+     "objective": "Instructions an AI assistant (via MCP) must follow when reading or editing this project.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Rules",
+       "objective": "Clear, checkable rules: what the assistant reads first, what it may change, how it reports.",
+       "content": {
+        "markdown": "_These rules are written for an AI assistant working on this project through the Sourcebook MCP server.\nAdapt them to your way of working._\n\n**Before doing anything**\n\n1. Read _Instructions_ (this section) and the _Glossary_; use the glossary terms, do not invent synonyms.\n2. Read the outline (`get_outline`) and the objective of the sections you will touch: the objective says\n   what a section must contain.\n\n**When writing**\n\n3. Edit directly only sections marked `[Draft]` (or with no status). For `[Review]` and `[Approved]`\n   sections, propose changes as comments (`add_comment`) and wait for the user.\n4. Never change the status of an ADR to Approved or Rejected yourself: propose it, the user decides.\n5. Keep IDs stable; new items take the next free number. Update the ADR index when you add an ADR.\n6. Record new doubts as Q-xx in _Open Questions_ instead of guessing; when a question is answered with a\n   decision, create the ADR and reference it from the question.\n7. Do not add requirements, dependencies or technologies that are not in this document or agreed with\n   the user. Respect _Scope & Non-goals_.\n\n**When generating code**\n\n8. Read first: Requirements, Decisions (ADR, Approved only), Design (interfaces, patterns, error\n   handling), Data Models and Project Structure (layout and coding conventions).\n9. Mention the IDs your code implements (FR-xx, T-xx) in commit messages or pull requests.\n\n**When done**\n\n10. Resolve the comments you have handled (`resolve_comment`).\n11. Send one `notify_changes` per group of changes with a short summary and the parts involved; ask for a\n    reload (`request_reload`) when the user should see the whole result.\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Glossary",
+     "objective": "Define every domain term once; both people and assistants must use these words consistently.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Terms",
+       "content": {
+        "markdown": "| Term | Definition | Not to be confused with |\n| --- | --- | --- |\n| [Term] | [Definition in plain language] | [Similar term] |\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Vision & Objectives",
+   "objective": "Why the project exists, what it must achieve and what it deliberately does not do.",
+   "children": [
+    {
+     "title": "Goals",
+     "objective": "The outcomes the project commits to, each measurable.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Problem statement",
+       "content": {
+        "markdown": "_Two or three sentences from the user's point of view. Avoid naming solutions here._\n\n[Who has the problem] currently [does what / suffers what], which causes [cost, risk or pain].\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Goals",
+       "content": {
+        "markdown": "| ID | Goal | Measure of success |\n| --- | --- | --- |\n| G-01 | [Outcome] | [Metric and target] |\n| G-02 | [Outcome] | [Metric and target] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Scope & Non-goals",
+     "objective": "Draw the boundary: what is included in this version and what is explicitly excluded.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Scope",
+       "content": {
+        "markdown": "**In scope**\n\n- [Capability]\n\n**Non-goals** (explicitly excluded — an assistant must not add them)\n\n- [Excluded capability] — _why: [reason]_\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Stakeholders & Users",
+     "objective": "Who uses or is affected by the system and what success means for each.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Stakeholders",
+       "content": {
+        "markdown": "| Stakeholder | Role | Needs | Success criteria |\n| --- | --- | --- | --- |\n| [End user] | [Uses the system to …] | [What they need] | [How they judge success] |\n| [Maintainer] | [Develops and runs it] | [Simple deploys, clear logs] | [Time to fix a bug] |\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Requirements",
+   "objective": "What the system must do and how well, in a testable way. Every requirement has an ID.",
+   "children": [
+    {
+     "title": "Functional Requirements",
+     "objective": "Behaviours the system provides, each with priority and acceptance criteria.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Functional requirements",
+       "content": {
+        "markdown": "_MoSCoW priority (Must, Should, Could, Won't). Every acceptance criterion must be verifiable by a test._\n\n| ID | Requirement | Priority | Acceptance criteria | Use case |\n| --- | --- | --- | --- | --- |\n| FR-01 | The system shall [behaviour]. | Must | Given [context], when [action], then [result]. | UC-01 |\n| FR-02 | The system shall [behaviour]. | Should | [Criterion] | UC-01 |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Non-Functional Requirements",
+     "objective": "Quality attributes (performance, security, availability, …) with measurable targets.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Quality attributes",
+       "content": {
+        "markdown": "| ID | Attribute | Scenario | Target |\n| --- | --- | --- | --- |\n| NFR-01 | Performance | [N] concurrent users call [operation] | p95 latency < [X] ms |\n| NFR-02 | Security | [Threat or access scenario] | [Control] |\n| NFR-03 | Maintainability | A developer adds [feature type] | < [N] days |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Use Cases & User Stories",
+     "objective": "Concrete interactions that give meaning to the requirements.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "UC-01: [Name]",
+       "content": {
+        "markdown": "**Actor:** [user role] · **Goal:** [what they want] · **Requirements:** FR-01, FR-02\n\n1. [Actor] [does something].\n2. The system [responds].\n3. …\n\n**Alternative flows:** [error or edge case] → [behaviour]\n\n_User story form:_ As a [role], I want [capability] so that [benefit].\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Constraints & Assumptions",
+     "objective": "Decisions already imposed, and assumptions the design relies on.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Constraints and assumptions",
+       "content": {
+        "markdown": "- **Technical:** [mandated language, platform, legacy system]\n- **Organisational:** [team, deadlines, budget]\n- **Regulatory:** [GDPR, standards]\n\n**Assumptions** (to be validated)\n\n- [Assumption] — _validated by: [how / when]_\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Open Questions",
+   "objective": "Doubts to be resolved. One block per question (Q-xx); a question settled by a decision points to its ADR.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "How to use",
+     "content": {
+      "markdown": "Use a **Question** block for open-ended questions and a **Multiple choice** block when the answer is one of\na few alternatives (the note explains the choice). Title each block `Q-xx: …`. When a question is answered:\n\n- write the answer and, if it is a design decision, create an ADR and write \"→ ADR-xxx\" in the answer;\n- resolve the related comments. Answered questions stay here as history.\n"
+     }
+    },
+    {
+     "type": "question",
+     "title": "Q-01: Who are the first users?",
+     "objective": "Open-ended question: answer in a few sentences.",
+     "content": {
+      "question": "Which user group do we target with the first release, and how many users do we expect?",
+      "answer": ""
+     }
+    },
+    {
+     "type": "choice",
+     "title": "Q-02: Deployment target",
+     "objective": "Pick one; explain in the note. If this becomes binding, record it as an ADR.",
+     "content": {
+      "question": "Where will the first version run?",
+      "mode": "single",
+      "options": [
+       {
+        "id": "cloud",
+        "text": "Managed cloud (PaaS)"
+       },
+       {
+        "id": "onprem",
+        "text": "On-premise server"
+       },
+       {
+        "id": "desktop",
+        "text": "Local desktop app"
+       }
+      ],
+      "selected": [],
+      "note": ""
+     }
+    },
+    {
+     "type": "choice",
+     "title": "Q-03: Supported platforms",
+     "content": {
+      "question": "Which platforms must the first release support?",
+      "mode": "multiple",
+      "options": [
+       {
+        "id": "linux",
+        "text": "Linux"
+       },
+       {
+        "id": "macos",
+        "text": "macOS"
+       },
+       {
+        "id": "windows",
+        "text": "Windows"
+       },
+       {
+        "id": "web",
+        "text": "Web browser"
+       }
+      ],
+      "selected": [],
+      "note": ""
+     }
+    }
+   ]
+  },
+  {
+   "title": "Decisions (ADR)",
+   "objective": "Architecture Decision Records: one sub-section per decision, never deleted. The index lists them all.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "ADR index",
+     "objective": "Every ADR of the project with its current status (same dot as its Status block).",
+     "content": {
+      "markdown": "**Status:** 🟡 Proposed (under discussion) · 🟢 Approved (binding) · 🔴 Rejected (kept for history).\nKeep this list in sync with the sub-sections below — one row per ADR, newest last.\n\n| ADR | Decision | Status | Date | Related |\n| --- | --- | --- | --- | --- |\n| ADR-001 | [Example] Choose the persistence technology | 🟡 Proposed | [YYYY-MM-DD] | Q-02, NFR-01 |\n| ADR-002 | [Example] Use a layered architecture | 🟢 Approved | [YYYY-MM-DD] | NFR-03 |\n| ADR-003 | [Example] Event sourcing for the order history | 🔴 Rejected | [YYYY-MM-DD] | ADR-001 |\n"
+     }
+    }
+   ],
+   "children": [
+    {
+     "title": "ADR-001: [Example] Choose the persistence technology",
+     "objective": "Example ADR — copy this structure for new decisions: status, context, question, options, decision, consequences.",
+     "subs": [
+      {
+       "type": "choice",
+       "title": "Status",
+       "objective": "Exactly one status. Proposed → under discussion; Approved → binding for design and code; Rejected → kept for history.",
+       "content": {
+        "question": "What is the status of this decision?",
+        "mode": "single",
+        "options": [
+         {
+          "id": "proposed",
+          "text": "🟡 Proposed"
+         },
+         {
+          "id": "approved",
+          "text": "🟢 Approved"
+         },
+         {
+          "id": "rejected",
+          "text": "🔴 Rejected"
+         }
+        ],
+        "selected": [
+         "proposed"
+        ],
+        "note": "Proposed by [name] on [YYYY-MM-DD]. Deciders: [names]."
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Context",
+       "content": {
+        "markdown": "_What forces the decision: requirements, constraints, current situation. Link the IDs._\n\nThe system must store [entities] (see _Data Models_) with [consistency / query needs] (NFR-01) and run\n[where] (Q-02). The team knows [technologies].\n"
+       }
+      },
+      {
+       "type": "question",
+       "title": "Decision question",
+       "content": {
+        "question": "Which database should store the application data?",
+        "answer": "_Filled in once decided — e.g. \"PostgreSQL, because …\"._"
+       }
+      },
+      {
+       "type": "choice",
+       "title": "Options considered",
+       "objective": "The alternatives evaluated; select the chosen one when the ADR is approved.",
+       "content": {
+        "question": "Which option do we choose?",
+        "mode": "single",
+        "options": [
+         {
+          "id": "pg",
+          "text": "PostgreSQL — relational, strong consistency, mature tooling"
+         },
+         {
+          "id": "mongo",
+          "text": "MongoDB — document model, flexible schema"
+         },
+         {
+          "id": "sqlite",
+          "text": "SQLite — embedded, zero operations, single writer"
+         }
+        ],
+        "selected": [],
+        "note": "[Pros and cons of each option, and why the selected one wins.]"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Decision & consequences",
+       "content": {
+        "markdown": "**Decision:** [We will use … for …].\n\n**Consequences**\n\n- ✅ [Positive consequence]\n- ⚠️ [Trade-off or cost we accept]\n- 🔁 [Follow-up work: tasks T-xx, ADRs to revisit]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "ADR-002: [Example] Use a layered architecture",
+     "objective": "Example of an approved ADR: the chosen option is selected and the decision is binding.",
+     "subs": [
+      {
+       "type": "choice",
+       "title": "Status",
+       "objective": "Exactly one status. Proposed → under discussion; Approved → binding for design and code; Rejected → kept for history.",
+       "content": {
+        "question": "What is the status of this decision?",
+        "mode": "single",
+        "options": [
+         {
+          "id": "proposed",
+          "text": "🟡 Proposed"
+         },
+         {
+          "id": "approved",
+          "text": "🟢 Approved"
+         },
+         {
+          "id": "rejected",
+          "text": "🔴 Rejected"
+         }
+        ],
+        "selected": [
+         "approved"
+        ],
+        "note": "Approved by [names] on [YYYY-MM-DD]."
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Context",
+       "content": {
+        "markdown": "The code base must stay easy to change by a small team (NFR-03); domain rules must be testable without\nthe database or the web framework.\n"
+       }
+      },
+      {
+       "type": "question",
+       "title": "Decision question",
+       "content": {
+        "question": "How do we organise the code into layers?",
+        "answer": "Three layers — api → domain ← infra — with dependencies pointing to the domain (see _Project Structure_)."
+       }
+      },
+      {
+       "type": "choice",
+       "title": "Options considered",
+       "content": {
+        "question": "Which option do we choose?",
+        "mode": "single",
+        "options": [
+         {
+          "id": "layered",
+          "text": "Layered (api / domain / infra)"
+         },
+         {
+          "id": "hexagonal",
+          "text": "Hexagonal (ports & adapters)"
+         },
+         {
+          "id": "none",
+          "text": "No explicit layering"
+         }
+        ],
+        "selected": [
+         "layered"
+        ],
+        "note": "Hexagonal is cleaner but heavier for the team's size; layered gives most of the benefit with less ceremony."
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Decision & consequences",
+       "content": {
+        "markdown": "**Decision:** We use a layered architecture with the dependency rules in _Project Structure & Packages_.\n\n- ✅ Domain logic unit-testable in isolation\n- ⚠️ Some mapping code between layers\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "ADR-003: [Example] Event sourcing for the order history",
+     "objective": "Example of a rejected ADR: kept to remember why the option was discarded.",
+     "subs": [
+      {
+       "type": "choice",
+       "title": "Status",
+       "objective": "Exactly one status. Proposed → under discussion; Approved → binding for design and code; Rejected → kept for history.",
+       "content": {
+        "question": "What is the status of this decision?",
+        "mode": "single",
+        "options": [
+         {
+          "id": "proposed",
+          "text": "🟡 Proposed"
+         },
+         {
+          "id": "approved",
+          "text": "🟢 Approved"
+         },
+         {
+          "id": "rejected",
+          "text": "🔴 Rejected"
+         }
+        ],
+        "selected": [
+         "rejected"
+        ],
+        "note": "Rejected on [YYYY-MM-DD]: see the note in Options considered."
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Context",
+       "content": {
+        "markdown": "We need an audit trail of order changes (FR-xx). Event sourcing was proposed as the storage model.\n"
+       }
+      },
+      {
+       "type": "question",
+       "title": "Decision question",
+       "content": {
+        "question": "Do we store orders as a stream of events?",
+        "answer": "No: an audit table written by the order service covers the requirement (→ ADR-001)."
+       }
+      },
+      {
+       "type": "choice",
+       "title": "Options considered",
+       "content": {
+        "question": "Which option do we choose?",
+        "mode": "single",
+        "options": [
+         {
+          "id": "es",
+          "text": "Event sourcing"
+         },
+         {
+          "id": "audit",
+          "text": "Current-state tables + audit log table"
+         }
+        ],
+        "selected": [
+         "audit"
+        ],
+        "note": "Event sourcing adds projections, replays and versioned events the team has no experience with; the audit requirement does not need it."
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Architecture",
+   "objective": "The main building blocks, their responsibilities and how they are deployed.",
+   "children": [
+    {
+     "title": "System Context",
+     "objective": "The system as a black box with its users and external systems.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Context diagram",
+       "content": {
+        "code": "flowchart LR\n    user([User]) -->|uses| sys[The System]\n    admin([Administrator]) -->|configures| sys\n    sys -->|reads/writes| ext1[(External service A)]\n    sys -->|sends notifications| ext2[Email provider]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Components",
+     "objective": "Containers and components with their single responsibility.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Component diagram",
+       "content": {
+        "code": "flowchart TB\n    subgraph System\n        ui[Web UI] --> api[API]\n        api --> svc[Domain services]\n        svc --> repo[Repositories]\n    end\n    repo --> db[(Database)]\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Responsibilities",
+       "content": {
+        "markdown": "| Component | Responsibility | Technology | Owner |\n| --- | --- | --- | --- |\n| [Component] | [One sentence] | [Language / framework] | [Team / person] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Tech Stack & Dependencies",
+     "objective": "Languages, frameworks and libraries with versions — the only ones code may use.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Tech stack",
+       "content": {
+        "markdown": "| Area | Choice | Version | Why (ADR) |\n| --- | --- | --- | --- |\n| Language | [e.g. TypeScript] | [5.x] | ADR-xxx |\n| Framework | [ ] | [ ] | |\n| Database | [ ] | [ ] | ADR-001 |\n| Testing | [ ] | [ ] | |\n\n**External services / APIs:** [name] — [purpose, limits, credentials handling]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Deployment View",
+     "objective": "Where components run and how they communicate.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Deployment diagram",
+       "content": {
+        "code": "flowchart LR\n    subgraph Client\n        browser[Browser]\n    end\n    subgraph Server[\"Server / cloud\"]\n        app[Application container]\n        db[(Database)]\n    end\n    browser -->|HTTPS| app --> db\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Design",
+   "objective": "How the components work inside: patterns, key scenarios, structure (UML), interfaces and error handling.",
+   "children": [
+    {
+     "title": "Design Patterns",
+     "objective": "Patterns used, where and why; code must follow them consistently.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Patterns",
+       "content": {
+        "markdown": "| Pattern | Where | Why | Notes |\n| --- | --- | --- | --- |\n| [Repository] | [Data access layer] | [Isolate persistence from domain] | [Interface per aggregate] |\n| [Strategy] | [ ] | [ ] | |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Key Scenarios (Sequence Diagrams)",
+     "objective": "The most important flows step by step, one diagram each, linked to use cases.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "UC-01: [Scenario name]",
+       "objective": "One sequence diagram per key use case; name it after the UC.",
+       "content": {
+        "code": "sequenceDiagram\n    actor U as User\n    participant UI as Web UI\n    participant API as API\n    participant S as Service\n    participant DB as Database\n    U->>UI: [action]\n    UI->>API: POST /resource\n    API->>S: create(command)\n    S->>DB: insert\n    DB-->>S: ok\n    S-->>API: result\n    API-->>UI: 201 Created\n    UI-->>U: [feedback]\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Notes on the scenario",
+       "content": {
+        "markdown": "_Explain what the diagram does not show: validation, transactions, retries, error paths._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Class Diagrams (UML)",
+     "objective": "Static structure of the main modules: classes, interfaces and relations.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Domain classes",
+       "content": {
+        "code": "classDiagram\n    class Order {\n      +id: UUID\n      +status: OrderStatus\n      +addItem(product, qty)\n      +total() Money\n    }\n    class OrderItem {\n      +quantity: int\n      +price: Money\n    }\n    class OrderRepository {\n      <<interface>>\n      +save(order)\n      +findById(id) Order\n    }\n    Order \"1\" *-- \"many\" OrderItem\n    OrderRepository ..> Order\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Interfaces & APIs",
+     "objective": "Contracts between components and with the outside: endpoints, messages, signatures.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "API overview",
+       "content": {
+        "markdown": "| Method | Path | Request | Response | Errors | Requirement |\n| --- | --- | --- | --- | --- | --- |\n| POST | /api/[resources] | [body] | 201 [resource] | 400, 409 | FR-01 |\n| GET | /api/[resources]/{id} | – | 200 [resource] | 404 | FR-02 |\n"
+       }
+      },
+      {
+       "type": "code",
+       "title": "Contract example",
+       "content": {
+        "language": "typescript",
+        "code": "/** Request/response types shared by client and server. */\nexport interface CreateResourceRequest {\n  name: string;\n}\n\nexport interface Resource {\n  id: string;\n  name: string;\n  createdAt: string; // ISO 8601\n}\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Error Handling",
+     "objective": "How errors are classified, propagated, logged and shown to users.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Error handling policy",
+       "content": {
+        "markdown": "- **Validation errors** → [400 with field details]; never logged as errors.\n- **Not found / conflicts** → [404 / 409].\n- **Unexpected errors** → logged with [correlation id]; the user sees [generic message].\n- **Retries:** [which calls, how many, backoff].\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Data Models",
+   "objective": "The data the system owns: entities, relations, storage and evolution.",
+   "children": [
+    {
+     "title": "Domain Model",
+     "objective": "Entities and relations, independent of storage.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Entity–relationship diagram",
+       "content": {
+        "code": "erDiagram\n    CUSTOMER ||--o{ ORDER : places\n    ORDER ||--|{ ORDER_ITEM : contains\n    PRODUCT ||--o{ ORDER_ITEM : \"is in\"\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Entities",
+       "content": {
+        "markdown": "| Entity | Description | Key attributes | Invariants |\n| --- | --- | --- | --- |\n| [Order] | [ ] | [id, status, createdAt] | [total ≥ 0] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Persistence & Schema",
+     "objective": "How entities are stored: schema, indexes, retention.",
+     "subs": [
+      {
+       "type": "code",
+       "title": "Schema",
+       "content": {
+        "language": "sql",
+        "code": "CREATE TABLE orders (\n  id          UUID PRIMARY KEY,\n  status      TEXT NOT NULL,\n  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Migrations & retention",
+       "content": {
+        "markdown": "- **Migrations:** [tool], one migration per change, never edited once applied.\n- **Retention / privacy:** [what is deleted when, personal data handling].\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Project Structure & Packages",
+   "objective": "Repository layout, modules and conventions — the context needed to write consistent code.",
+   "children": [
+    {
+     "title": "Repository Layout",
+     "objective": "Folders and packages, each with its purpose and allowed dependencies.",
+     "subs": [
+      {
+       "type": "code",
+       "title": "Layout",
+       "content": {
+        "language": "plaintext",
+        "code": "project/\n  src/\n    api/          HTTP layer (controllers, DTOs)\n    domain/       entities, services — no framework imports\n    infra/        repositories, external clients\n  tests/\n  docs/\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Packages & dependency rules",
+       "content": {
+        "markdown": "| Package | Responsibility | May depend on |\n| --- | --- | --- |\n| api | [ ] | domain |\n| domain | [ ] | – |\n| infra | [ ] | domain |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Coding Conventions",
+     "objective": "Style and practices every contributor and assistant follows.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Conventions",
+       "content": {
+        "markdown": "- **Style:** [formatter / linter and config]\n- **Naming:** [files, classes, functions, tests]\n- **Errors & logging:** see _Design → Error Handling_\n- **Comments & docs:** [when to write them]\n- **Commits / branches:** [convention, e.g. Conventional Commits, `feature/T-xx-…`]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Build & Tooling",
+     "objective": "How to set up, build, run and release locally.",
+     "subs": [
+      {
+       "type": "code",
+       "title": "Commands",
+       "content": {
+        "language": "bash",
+        "code": "# setup\n[install command]\n# run locally\n[dev command]\n# tests\n[test command]\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Cross-cutting Concerns",
+   "objective": "Qualities that touch every component: security, configuration, observability, performance.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Security",
+     "content": {
+      "markdown": "- **Authentication / authorisation:** [mechanism, roles]\n- **Secrets:** [where they live, never in the repository]\n- **Threats considered:** [list, with mitigations]\n"
+     }
+    },
+    {
+     "type": "markdown",
+     "title": "Configuration",
+     "content": {
+      "markdown": "| Setting | Source (env / file) | Default | Description |\n| --- | --- | --- | --- |\n| [APP_PORT] | env | [8080] | [ ] |\n"
+     }
+    },
+    {
+     "type": "markdown",
+     "title": "Observability & performance",
+     "content": {
+      "markdown": "- **Logs:** [format, levels, correlation id]\n- **Metrics / traces:** [what, where]\n- **Performance budget:** [targets from NFR-xx and how they are measured]\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Testing",
+   "objective": "How we know the system works: strategy, test plan traced to requirements, definition of done.",
+   "children": [
+    {
+     "title": "Test Strategy",
+     "objective": "Kinds of tests, tools and what each level covers.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Strategy",
+       "content": {
+        "markdown": "| Level | Scope | Tool | Runs |\n| --- | --- | --- | --- |\n| Unit | [domain logic] | [ ] | every commit |\n| Integration | [repositories, external APIs] | [ ] | every commit |\n| End-to-end | [key scenarios UC-xx] | [ ] | before release |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Test Plan",
+     "objective": "Which tests verify which requirement.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Traceability",
+       "content": {
+        "markdown": "| Requirement | Test(s) | Status |\n| --- | --- | --- |\n| FR-01 | [test name / file] | [Not started / Passing] |\n| NFR-01 | [load test] | [ ] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Definition of Done",
+     "objective": "When a task counts as finished.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Definition of done",
+       "content": {
+        "markdown": "- [ ] Acceptance criteria of the related FR-xx met\n- [ ] Tests written and passing\n- [ ] Code reviewed; follows _Coding Conventions_\n- [ ] Documentation updated (this document and user docs)\n- [ ] Related comments and questions resolved\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Deployment & Operations",
+   "objective": "Environments, CI/CD, release and run-time operations.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Environments & pipeline",
+     "content": {
+      "markdown": "| Environment | Purpose | URL / host | Deployed by |\n| --- | --- | --- | --- |\n| dev | [ ] | [ ] | [ ] |\n| production | [ ] | [ ] | [ ] |\n\n**CI/CD:** [pipeline steps: build → test → package → deploy]\n\n**Release & rollback:** [versioning scheme, how to roll back]\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Documentation",
+   "objective": "Documentation produced for users, developers and operators.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Documentation plan",
+     "content": {
+      "markdown": "| Document | Audience | Where | Status |\n| --- | --- | --- | --- |\n| README | developers | repository root | [ ] |\n| API reference | integrators | [generated from …] | [ ] |\n| User guide | end users | [ ] | [ ] |\n| Runbook | operators | [ ] | [ ] |\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Development Plan",
+   "objective": "Milestones and tasks, each traced to requirements.",
+   "children": [
+    {
+     "title": "Milestones",
+     "objective": "Major steps with their goal and expected date.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Roadmap",
+       "content": {
+        "code": "gantt\n    title Roadmap\n    dateFormat YYYY-MM-DD\n    section Foundations\n    Setup & skeleton      :m1, 2026-01-05, 14d\n    section Features\n    Core features (FR-01) :m2, after m1, 28d\n    section Release\n    Hardening & release   :m3, after m2, 14d\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Tasks",
+     "objective": "The backlog: small, verifiable tasks.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Backlog",
+       "content": {
+        "markdown": "| ID | Task | Implements | Owner | Status |\n| --- | --- | --- | --- | --- |\n| T-01 | [Set up repository and CI] | – | [ ] | ⬜ To do |\n| T-02 | [Implement …] | FR-01 | [ ] | ⬜ To do |\n\nStatus: ⬜ To do · 🔄 In progress · ✅ Done · ⛔ Blocked\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Issues, Bugs & Tech Debt",
+   "objective": "Known problems and accepted shortcuts, with severity and status.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Issues",
+     "content": {
+      "markdown": "| ID | Description | Severity | Found in | Status | Fix (T-xx) |\n| --- | --- | --- | --- | --- | --- |\n| BUG-01 | [What happens, how to reproduce] | [High / Medium / Low] | [version] | Open | |\n| TD-01 | [Shortcut taken and its cost] | [ ] | [ ] | Accepted | |\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Risks",
+   "objective": "What could go wrong, how likely, how bad, and what we do about it.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Risk register",
+     "content": {
+      "markdown": "| Risk | Likelihood | Impact | Mitigation | Owner |\n| --- | --- | --- | --- | --- |\n| [Risk description] | Medium | High | [Action] | [Name] |\n"
+     }
+    }
+   ]
+  }
+ ]
+}

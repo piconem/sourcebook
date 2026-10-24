@@ -1,0 +1,295 @@
+{
+ "name": "Research Project Proposal",
+ "description": "Collaborative research proposal, simplified from the Horizon Europe structure: excellence, impact, implementation.",
+ "sections": [
+  {
+   "title": "Project Summary",
+   "objective": "Give evaluators the essence of the project on one page.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Project identity",
+     "content": {
+      "markdown": "| Field | Value |\n| --- | --- |\n| Acronym | [ACRONYM] |\n| Full title | [Title] |\n| Duration | [36 months] |\n| Budget requested | [€ …] |\n| Keywords | [k1, k2, k3] |\n"
+     }
+    },
+    {
+     "type": "markdown",
+     "title": "Abstract",
+     "objective": "Written last; must stand alone for reviewers who read nothing else.",
+     "content": {
+      "markdown": "_Max 2000 characters: challenge, objectives, approach, expected impact._\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Introduction",
+   "objective": "Frame the challenge the project addresses and why it must be tackled now.",
+   "children": [
+    {
+     "title": "Challenge and Context",
+     "objective": "Describe the societal, scientific or industrial challenge and its relevance to the call.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Challenge",
+       "content": {
+        "markdown": "_Evidence of the problem (figures, policy documents), link to the call topic and expected outcomes._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Project Vision",
+     "objective": "State in a few lines what the world looks like if the project succeeds.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Vision",
+       "content": {
+        "markdown": "_By the end of the project, [who] will be able to [what], thanks to [key result]._\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Excellence",
+   "objective": "Show that the objectives are clear and ambitious and that the methodology is sound.",
+   "children": [
+    {
+     "title": "Objectives",
+     "objective": "Define specific, measurable, achievable, relevant and time-bound (SMART) objectives.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Specific objectives",
+       "objective": "Every objective must map to work packages and deliverables.",
+       "content": {
+        "markdown": "| ID | Objective | Measurable indicator | Target | Month |\n| --- | --- | --- | --- | --- |\n| O1 | [Develop …] | [Accuracy / TRL / users] | [value] | M18 |\n| O2 | [Validate …] | [...] | [...] | M30 |\n| O3 | [Demonstrate …] | [...] | [...] | M36 |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "State of the Art and Beyond",
+     "objective": "Summarise the state of the art and explain how the project advances beyond it.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Progress beyond the state of the art",
+       "content": {
+        "markdown": "| Area | State of the art | Limitations | Our advance |\n| --- | --- | --- | --- |\n| [Area 1] | [Best existing approaches, cited] | [Gap] | [What the project brings] |\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Technology Readiness",
+       "content": {
+        "markdown": "_Starting TRL [x] → target TRL [y], with justification._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Methodology",
+     "objective": "Describe the concept, the approach and how the work is organised to reach the objectives.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Concept",
+       "content": {
+        "code": "flowchart LR\n  req[Requirements and use cases] --> res[Research and development]\n  res --> int[Integration]\n  int --> pil[Pilots and validation]\n  pil -->|feedback| res\n  pil --> exp[Exploitation]\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Approach",
+       "content": {
+        "markdown": "_Methods, models, data, and how interdisciplinary expertise is combined. Explain alternatives and fallback strategies._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Open Science Practices",
+     "objective": "Explain how results, data and software will be shared openly and reproducibly.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Open science",
+       "content": {
+        "markdown": "- Open access publications: [route]\n- Research data management: [FAIR principles, repositories]\n- Open-source software: [licenses]\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Impact",
+   "objective": "Convince evaluators that results will lead to outcomes and wider impacts, and how they will reach users.",
+   "children": [
+    {
+     "title": "Pathways to Impact",
+     "objective": "Link project outputs to expected outcomes and long-term impacts.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Impact pathway",
+       "content": {
+        "code": "flowchart LR\n  out[Outputs: tools, datasets, publications] --> outc[Outcomes: adoption by target groups]\n  outc --> imp[Impacts: societal, economic, scientific]\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Expected impacts",
+       "content": {
+        "markdown": "| Expected outcome (call) | Project contribution | Indicator | Target |\n| --- | --- | --- | --- |\n| [Outcome from the call text] | [How we contribute] | [KPI] | [value] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Target Groups and Stakeholders",
+     "objective": "Identify who will use or benefit from the results and how they are involved.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Stakeholders",
+       "content": {
+        "markdown": "| Group | Interest | Involvement in the project |\n| --- | --- | --- |\n| [Industry] | [...] | [Advisory board, pilots] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Dissemination, Exploitation and Communication",
+     "objective": "Plan how results are spread, exploited and communicated to the public.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "DEC plan",
+       "content": {
+        "markdown": "| Measure | Target audience | Channel | KPI |\n| --- | --- | --- | --- |\n| Dissemination | Scientific community | Journals, conferences | [N papers] |\n| Exploitation | Industry | Licensing, spin-off | [N agreements] |\n| Communication | General public | Website, social media | [N visitors] |\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Implementation",
+   "objective": "Show that the work plan, resources and team are credible and well organised.",
+   "children": [
+    {
+     "title": "Work Plan and Work Packages",
+     "objective": "Break the project into work packages with clear leaders and objectives.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Work packages",
+       "content": {
+        "markdown": "| WP | Title | Lead | Start | End | Objectives |\n| --- | --- | --- | --- | --- | --- |\n| WP1 | Project management | [P1] | M1 | M36 | — |\n| WP2 | [Research line A] | [P2] | M1 | M24 | O1 |\n| WP3 | [Integration and pilots] | [P3] | M12 | M33 | O2 |\n| WP4 | Dissemination and exploitation | [P1] | M1 | M36 | O3 |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Timeline",
+     "objective": "Visualise the schedule of work packages and milestones.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Gantt chart",
+       "content": {
+        "code": "gantt\n  title Project timeline\n  dateFormat YYYY-MM-DD\n  section Management\n    WP1 Management :wp1, 2027-01-01, 1095d\n  section Research\n    WP2 Research line A :wp2, 2027-01-01, 730d\n    WP3 Integration and pilots :wp3, 2027-12-01, 640d\n  section Impact\n    WP4 Dissemination :wp4, 2027-01-01, 1095d\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Deliverables and Milestones",
+     "objective": "List the tangible outputs and control points of the project.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Deliverables",
+       "content": {
+        "markdown": "| No. | Deliverable | WP | Type | Dissemination | Month |\n| --- | --- | --- | --- | --- | --- |\n| D2.1 | [Report on …] | WP2 | Report | Public | M12 |\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Milestones",
+       "content": {
+        "markdown": "| No. | Milestone | WPs | Month | Means of verification |\n| --- | --- | --- | --- | --- |\n| MS1 | [First prototype] | WP2 | M12 | [D2.1 accepted] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Team and Consortium",
+     "objective": "Show that the partners have complementary expertise and clear roles.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Partners",
+       "content": {
+        "markdown": "| Partner | Country | Expertise | Role in the project |\n| --- | --- | --- | --- |\n| [University A] | [IT] | [...] | Coordinator, WP2 lead |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Risk Management",
+     "objective": "Identify critical risks and mitigation measures.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Critical risks",
+       "content": {
+        "markdown": "| Risk | Likelihood | Severity | WPs | Mitigation |\n| --- | --- | --- | --- | --- |\n| [Data not available on time] | Medium | High | WP2 | [Synthetic data fallback] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Resources and Budget",
+     "objective": "Justify the effort and costs requested.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Effort and costs",
+       "content": {
+        "markdown": "| Partner | Person-months | Personnel (€) | Equipment (€) | Other (€) | Total (€) |\n| --- | --- | --- | --- | --- | --- |\n| [P1] | [..] | [..] | [..] | [..] | [..] |\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Ethics and Data Management",
+   "objective": "Address ethical issues and how data are managed during and after the project.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Ethics self-assessment",
+     "content": {
+      "markdown": "_Human participants, personal data (GDPR), dual use, AI ethics — and the measures taken._\n"
+     }
+    },
+    {
+     "type": "markdown",
+     "title": "Data management plan",
+     "content": {
+      "markdown": "_Types of data, formats, storage, sharing (FAIR), retention._\n"
+     }
+    }
+   ]
+  }
+ ]
+}

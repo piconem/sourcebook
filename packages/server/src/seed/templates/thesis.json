@@ -1,0 +1,347 @@
+{
+ "name": "Thesis",
+ "description": "Bachelor/Master/PhD thesis: introduction, state of the art, contribution and architecture, implementation, experimental evaluation, conclusions.",
+ "sections": [
+  {
+   "title": "Abstract",
+   "objective": "Summarise problem, contribution, method and main results in one page.",
+   "subs": [
+    {
+     "type": "markdown",
+     "title": "Abstract",
+     "content": {
+      "markdown": "_Context and problem → goal of the thesis → approach → main results → significance. Write it last._\n"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Introduction",
+   "objective": "Introduce the problem, motivate it and state goals and contributions of the thesis.",
+   "children": [
+    {
+     "title": "Context",
+     "objective": "Describe the domain in which the thesis is set.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Context",
+       "content": {
+        "markdown": "_The application domain and the technological/scientific landscape, from general to specific._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Motivation and Problem Statement",
+     "objective": "Explain why the problem matters and define it precisely.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Problem statement",
+       "content": {
+        "markdown": "_What is the problem, who is affected, why existing solutions are not enough._\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Research questions / goals",
+       "objective": "Each question/goal must be answered in the evaluation and conclusions.",
+       "content": {
+        "markdown": "- **RQ1 / G1:** [...]\n- **RQ2 / G2:** [...]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Contributions",
+     "objective": "List the original contributions of the thesis.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Contributions",
+       "content": {
+        "markdown": "1. [Design of …]\n2. [Implementation of …]\n3. [Experimental evaluation showing …]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Thesis Structure",
+     "objective": "Give a roadmap of the chapters.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Structure",
+       "content": {
+        "markdown": "Chapter 2 presents the state of the art. Chapter 3 describes the proposed contribution and its architecture. Chapter 4 details the implementation. Chapter 5 reports the experimental evaluation. Chapter 6 concludes and outlines future developments.\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "State of the Art",
+   "objective": "Provide the background and critically review existing work related to the problem.",
+   "children": [
+    {
+     "title": "Background",
+     "objective": "Introduce the concepts, technologies and terminology needed to follow the thesis.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Background concepts",
+       "content": {
+        "markdown": "_Definitions, models, standards and technologies used later._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Related Work",
+     "objective": "Review existing approaches, grouped by theme.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Related approaches",
+       "content": {
+        "markdown": "_One subsection per research line: summary, strengths, limitations._\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Comparison",
+       "objective": "Makes the gap explicit and motivates the contribution.",
+       "content": {
+        "markdown": "| Approach | Feature A | Feature B | Limitation |\n| --- | --- | --- | --- |\n| [Work 1] | ✓ | ✗ | [...] |\n| **This thesis** | ✓ | ✓ | — |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Open Challenges",
+     "objective": "Summarise the gaps that the thesis addresses.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Gaps",
+       "content": {
+        "markdown": "- [Gap 1 → addressed in Chapter 3]\n- [Gap 2 → addressed in Chapter 5]\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "The Contribution / Architecture",
+   "objective": "Present the proposed solution at the conceptual and architectural level.",
+   "children": [
+    {
+     "title": "Requirements",
+     "objective": "Derive the requirements the solution must satisfy.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Requirements",
+       "content": {
+        "markdown": "| ID | Requirement | Type | Source |\n| --- | --- | --- | --- |\n| R1 | [...] | Functional | [Gap / use case] |\n| R2 | [...] | Non-functional | [...] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Architecture Overview",
+     "objective": "Describe the overall architecture and its main components.",
+     "subs": [
+      {
+       "type": "mermaid",
+       "title": "Architecture",
+       "content": {
+        "code": "flowchart TB\n  subgraph Proposed system\n    in[Input layer] --> core[Core component]\n    core --> store[(Storage)]\n    core --> out[Output / API]\n  end\n  ext[External systems] --> in\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Components",
+       "content": {
+        "markdown": "| Component | Responsibility | Requirements covered |\n| --- | --- | --- |\n| [Core component] | [...] | R1, R2 |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Design Decisions",
+     "objective": "Justify the key design choices against alternatives.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Decisions",
+       "content": {
+        "markdown": "_For each decision: alternatives considered, criteria, choice and consequences._\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Implementation",
+   "objective": "Explain how the architecture was realised in practice.",
+   "children": [
+    {
+     "title": "Technologies and Tools",
+     "objective": "List and justify the technologies used.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Technology stack",
+       "content": {
+        "markdown": "| Layer | Technology | Version | Why |\n| --- | --- | --- | --- |\n| [Backend] | [...] | [...] | [...] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Key Modules",
+     "objective": "Describe the most relevant parts of the implementation.",
+     "subs": [
+      {
+       "type": "code",
+       "title": "Key code excerpt",
+       "objective": "Only code that helps understanding; full code goes in the repository.",
+       "content": {
+        "language": "python",
+        "code": "# Replace with a short, significant excerpt (not whole files).\ndef core_algorithm(data):\n    ...\n"
+       }
+      },
+      {
+       "type": "markdown",
+       "title": "Module description",
+       "content": {
+        "markdown": "_Responsibilities, main data structures and interactions of each key module._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Implementation Challenges",
+     "objective": "Discuss the difficulties met and how they were solved.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Challenges",
+       "content": {
+        "markdown": "- **[Challenge]:** [solution adopted]\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Experimental Evaluation",
+   "objective": "Assess the contribution against the research questions with a rigorous methodology.",
+   "children": [
+    {
+     "title": "Evaluation Goals and Methodology",
+     "objective": "Define what is evaluated and how.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Methodology",
+       "content": {
+        "markdown": "| Research question | Experiment | Metric | Expected outcome |\n| --- | --- | --- | --- |\n| RQ1 | [Exp. 1] | [...] | [...] |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Experimental Setup",
+     "objective": "Describe the environment, datasets and parameters to allow reproduction.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Setup",
+       "content": {
+        "markdown": "- **Hardware / environment:** [...]\n- **Datasets / workloads:** [...]\n- **Baselines:** [...]\n- **Parameters:** [...]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Results",
+     "objective": "Present the results for each research question.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Results",
+       "content": {
+        "markdown": "| Configuration | Metric 1 | Metric 2 |\n| --- | --- | --- |\n| Baseline | … | … |\n| Proposed | … | … |\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Discussion",
+     "objective": "Interpret results, including limitations and threats to validity.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Discussion",
+       "content": {
+        "markdown": "_What the results show for each RQ, unexpected findings, limitations._\n"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Conclusions and Future Developments",
+   "objective": "Close the thesis by summarising results and indicating next steps.",
+   "children": [
+    {
+     "title": "Summary of Contributions",
+     "objective": "Recap the work and answer the research questions explicitly.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Conclusions",
+       "content": {
+        "markdown": "_Problem → contribution → results, and an explicit answer to each RQ._\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Limitations",
+     "objective": "Acknowledge the limitations of the work.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Limitations",
+       "content": {
+        "markdown": "- [Limitation and its consequence]\n"
+       }
+      }
+     ]
+    },
+    {
+     "title": "Future Developments",
+     "objective": "Propose concrete directions for future work.",
+     "subs": [
+      {
+       "type": "markdown",
+       "title": "Future work",
+       "content": {
+        "markdown": "- [Direction 1: what, why, how]\n"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,4 +1,4 @@
-[← Sourcebook](../README.md) · [Installation](installation.md) · [Docker](../docker/README.md) · [User guide](user-guide.md) · [Collaboration](collaboration.md) · [AI assistant](ai-assistant.md) · [REST API](rest-api.md) · [File format](file-format.md) · [Development](development.md) · [Libraries](libraries.md)
+[← Sourcebook](../README.md) · [Installation](installation.md) · [Docker](../docker/README.md) · [User guide](user-guide.md) · [Collaboration](collaboration.md) · [AI assistant](ai-assistant.md) · [REST API](rest-api.md) · [File format](file-format.md) · [Development](development.md) · [Libraries](libraries.md) · [Screenshots](screenshots.md)
 
 # User guide
 
@@ -77,15 +77,16 @@ so links survive moving sections; the ↗ buttons of sections and sub-blocks cop
   a selection, a comment thread or a reference file.
 
 ## Templates
-**Sourcebook Demo** ships with Sourcebook: the server adds it to the workspace at its first start (and to existing
-workspaces after an upgrade), once — if the owner deletes it, it does not come back (`.sourcebook/seeded.json`
-remembers it; remove the id from there to get it again). It is a tour to start a first project from: a sub-block of
+Five templates ship with Sourcebook: **Sourcebook Demo**, **Software Project**, **Scientific Paper**, **Research Project
+Proposal** and **Thesis**. The server adds them to the workspace at its first start (and to existing workspaces after
+an upgrade), each once — if the owner deletes one, it does not come back (`.sourcebook/seeded.json` remembers it; remove
+the id from there to get it again), and a template with the same id already in the workspace is left as it is.
+
+**Sourcebook Demo** is a tour to start a first project from: a sub-block of
 every type (Markdown, Mermaid, drawing, equation, code, image, CSV data, question, multiple choice), nested sections,
 objectives, a bibliography entry cited in the text, reference files linked and attached, and pages on comments,
 notifications, locks, permissions and connecting an AI assistant. Its content is in
 `packages/server/src/seed/demoTemplate.ts`.
-
-Other templates can be added with a script (see [Development](development.md#example-templates)): **Software Project**, Scientific Paper, Research Project Proposal, Thesis.
 
 **Software Project** is meant to be worked on alone or with an AI assistant. It starts with _Prompts_ (a ready-to-paste
 briefing for an AI assistant, in English and Italian: MCP tools / REST API, structure, behaviour) and _Instructions_ (conventions,

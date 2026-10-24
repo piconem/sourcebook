@@ -15,13 +15,17 @@ async function start(workspace: string, configDir: string) {
 }
 
 describe("bundled templates", () => {
-  it("adds Sourcebook Demo once, with a sub-block of every type", async () => {
+  it("adds Sourcebook Demo and the example templates once; the demo has a sub-block of every type", async () => {
     const workspace = await tempProject();
     const configDir = await tempProject();
     const { app, seededTemplates, get } = await start(workspace, configDir);
-    expect(seededTemplates).toEqual(["sourcebook-demo"]);
-    expect((await get("/api/templates")).map((t: { id: string }) => t.id)).toEqual(["sourcebook-demo"]);
+    const ALL = ["sourcebook-demo", "software-project", "scientific-paper", "research-project-proposal", "thesis"];
+    expect(seededTemplates).toEqual(ALL);
+    expect((await get("/api/templates")).map((t: { id: string }) => t.id).sort()).toEqual([...ALL].sort());
     expect(existsSync(join(workspace, "templates", ".seed-sourcebook-demo"))).toBe(false);
+    const software = await get("/api/templates/software-project");
+    expect(software).toMatchObject({ name: "Software Project", sections: 49 });
+    expect((await get("/api/templates/thesis/notebook")).blocks.length).toBe(27);
 
     const base = "/api/templates/sourcebook-demo";
     const notebook = await get(`${base}/notebook`);
@@ -49,11 +53,22 @@ describe("bundled templates", () => {
 
     // Deleted by the owner: not added again at the next start.
     const again = await start(workspace, configDir);
-    await again.app.inject({ method: "DELETE", url: base });
+    for (const id of ALL) await again.app.inject({ method: "DELETE", url: `/api/templates/${id}` });
     await again.app.close();
     const third = await start(workspace, configDir);
     expect(third.seededTemplates).toEqual([]);
     expect(await third.get("/api/templates")).toEqual([]);
+  });
+
+  it("leaves templates already in the workspace alone and only records them", async () => {
+    const workspace = await tempProject();
+    const configDir = await tempProject();
+    const first = await buildApp(workspace, { auth: false, configDir });
+    await first.app.inject({ method: "POST", url: "/api/templates", payload: { name: "Thesis", description: "my own" } });
+    await first.app.close();
+    const { seededTemplates, get } = await start(workspace, configDir);
+    expect(seededTemplates).not.toContain("thesis");
+    expect(await get("/api/templates/thesis")).toMatchObject({ description: "my own", sections: 0 });
   });
 
   it("is off unless asked for (tests and embedding)", async () => {
