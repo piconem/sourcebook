@@ -1,6 +1,6 @@
 import type { McpSettingsView } from "@sourcebook/shared";
 
-type Stdio = McpSettingsView["connection"]["stdio"];
+type Stdio = NonNullable<McpSettingsView["connection"]["stdio"]>;
 
 /** POSIX shell quoting: plain words stay as they are, anything else goes in single quotes. */
 export function shellQuote(arg: string): string {
@@ -29,6 +29,25 @@ export const claudeCodeHttp = (h: Http, name = "sourcebook") =>
 export const jsonHttp = (h: Http, name = "sourcebook") =>
   JSON.stringify({ mcpServers: { [name]: { type: "http", url: h.url, ...(h.headers && Object.keys(h.headers).length ? { headers: h.headers } : {}) } } }, null, 2);
 
+/** Gemini CLI (`~/.gemini/settings.json`, user scope); its settings file also accepts the JSON of `jsonHttp`. */
+export const geminiHttp = (h: Http, name = "sourcebook") =>
+  [
+    "gemini mcp add --scope user --transport http",
+    ...Object.entries(h.headers ?? {}).map(([k, v]) => `--header ${shellQuote(`${k}: ${v}`)}`),
+    name,
+    shellQuote(h.url),
+  ].join(" ");
+
+/** Environment variable OpenAI Codex reads the bearer token from (it takes no inline header). */
+export const CODEX_TOKEN_VAR = "SOURCEBOOK_TOKEN";
+
+/** OpenAI Codex CLI: the token comes from SOURCEBOOK_TOKEN in the environment Codex starts in. */
+export const codexHttp = (h: Http, name = "sourcebook") => `codex mcp add ${name} --url ${shellQuote(h.url)} --bearer-token-env-var ${CODEX_TOKEN_VAR}`;
+
+/** The same, as `~/.codex/config.toml`. */
+export const codexToml = (h: Http, name = "sourcebook") =>
+  [`[mcp_servers.${name}]`, `url = ${JSON.stringify(h.url)}`, `bearer_token_env_var = ${JSON.stringify(CODEX_TOKEN_VAR)}`].join("\n");
+
 /** Placeholder of the server's connection hints, replaced by the user's access token. */
 export const TOKEN_PLACEHOLDER = "<your access token>";
 
@@ -43,5 +62,5 @@ export const mcpJsonWithEnvToken = (h: Http, name = "sourcebook") =>
 export function withToken(c: McpSettingsView["connection"], token: string): McpSettingsView["connection"] {
   const fill = (v: string) => v.replace(TOKEN_PLACEHOLDER, token);
   const map = (o: Record<string, string> = {}) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fill(v)]));
-  return { http: { ...c.http, headers: map(c.http.headers) }, stdio: { ...c.stdio, env: map(c.stdio.env) } };
+  return { http: { ...c.http, headers: map(c.http.headers) }, stdio: c.stdio && { ...c.stdio, env: map(c.stdio.env) } };
 }

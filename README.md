@@ -57,7 +57,8 @@ stepping on each other.
 open questions and options next to the content; start from a template (Software Project, Scientific Paper, Thesis,
 Research Proposal, or the *Sourcebook Demo* tour).
 
-**🧑 + 🤖 Alone with AI agents** — Connect an assistant such as Claude Code through the built-in **MCP server**. Agents
+**🧑 + 🤖 Alone with AI agents** — Connect an assistant — Claude Code, Gemini CLI, OpenAI Codex or any MCP client —
+through the built-in **MCP server**. Agents
 read the whole project (including your PDFs and documents, converted automatically), write and edit blocks, comment
 precise lines, and tell you what they changed with notifications. Several agents can work with you at once — a
 *writer*, a *reviewer* — each with its own name and picture.

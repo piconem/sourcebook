@@ -510,10 +510,16 @@ export const UpdateMcpSettingsBodySchema = z.object({
 export type UpdateMcpSettingsBody = z.infer<typeof UpdateMcpSettingsBodySchema>;
 
 /** Settings plus what an LLM client needs to connect (computed by the server). */
-export interface McpSettingsView extends McpSettings {
+export interface McpSettingsView extends Omit<McpSettings, "stdio"> {
+  /**
+   * `available`: this installation can offer stdio at all (false in a container: the process would have to run inside
+   * it). When it is not, stdio is off whatever the setting says.
+   */
+  stdio: { enabled: boolean; available: boolean };
   connection: {
     http: { url: string; headers?: Record<string, string> };
-    stdio: { command: string; args: string[]; cwd: string; env: Record<string, string> };
+    /** null when stdio is not available. */
+    stdio: { command: string; args: string[]; cwd: string; env: Record<string, string> } | null;
   };
 }
 

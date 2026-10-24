@@ -9,10 +9,10 @@ import { buildApp } from "../src/app.js";
 import { REPO_ROOT } from "../src/paths.js";
 import { tempProject } from "./helpers.js";
 
-async function setup(port?: number) {
+async function setup(port?: number, mcpStdio?: boolean) {
   const workspace = await tempProject();
   const configDir = await tempProject();
-  const { app } = await buildApp(workspace, { auth: false, configDir, port });
+  const { app } = await buildApp(workspace, { auth: false, configDir, port, mcpStdio });
   const call = async (method: string, url: string, payload?: object, headers?: Record<string, string>) => {
     const res = await app.inject({ method: method as "GET", url, payload: payload as Record<string, unknown>, headers });
     return { status: res.statusCode, body: res.json() };
@@ -27,7 +27,7 @@ describe("MCP settings", () => {
   it("defaults to both transports enabled and reports connection parameters", async () => {
     const { call } = await setup();
     const s = (await call("GET", "/api/settings/mcp")).body;
-    expect(s).toMatchObject({ http: { enabled: true }, stdio: { enabled: true }, readOnly: false });
+    expect(s).toMatchObject({ http: { enabled: true }, stdio: { enabled: true, available: true }, readOnly: false });
     expect(s.connection.http).toEqual({ url: "http://127.0.0.1:4000/mcp", headers: { Authorization: "Bearer <your access token>" } });
     expect(s.connection.stdio).toEqual({
       command: "pnpm",
@@ -63,6 +63,18 @@ describe("MCP settings", () => {
     expect((await call("GET", "/api/settings/mcp", undefined, stdio)).status).toBe(200); // it can still learn why
     expect((await call("GET", "/api/projects/demo/notebook", undefined, http)).status).toBe(200);
     expect((await call("GET", "/api/projects/demo/notebook")).status).toBe(200); // web / API
+  });
+
+  it("in a container stdio is unavailable: off, without connection hints, refused, and cannot be turned on", async () => {
+    const { call } = await setup(undefined, false);
+    const s = (await call("GET", "/api/settings/mcp")).body;
+    expect(s.stdio).toEqual({ enabled: false, available: false });
+    expect(s.connection.stdio).toBeNull();
+    expect(s.connection.http.url).toBe("http://127.0.0.1:4000/mcp");
+    expect(await call("GET", "/api/projects/demo/notebook", undefined, stdio)).toEqual({ status: 403, body: { error: expect.stringMatching(/not available in this installation/) } });
+    expect((await call("GET", "/api/projects/demo/notebook", undefined, http)).status).toBe(200);
+    expect((await call("PUT", "/api/settings/mcp", { stdio: { enabled: true } })).status).toBe(400);
+    expect((await call("PUT", "/api/settings/mcp", { readOnly: true })).body.stdio).toEqual({ enabled: false, available: false });
   });
 
   it("read-only refuses every MCP write but allows reads and the web editor", async () => {

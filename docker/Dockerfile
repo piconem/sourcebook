@@ -50,7 +50,9 @@ LABEL org.opencontainers.image.title="Sourcebook" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"
 
+# SOURCEBOOK_CONTAINER: no MCP over stdio here (an AI client cannot start a process inside the container); HTTP only.
 ENV NODE_ENV=production \
+    SOURCEBOOK_CONTAINER=1 \
     SOURCEBOOK_WORKSPACE=/data \
     SOURCEBOOK_HOST=0.0.0.0 \
     PORT=4000 \

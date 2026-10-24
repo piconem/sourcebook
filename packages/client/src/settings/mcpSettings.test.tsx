@@ -19,7 +19,7 @@ beforeEach(() => {
   copied.length = 0;
   settings = {
     http: { enabled: true },
-    stdio: { enabled: true },
+    stdio: { enabled: true, available: true },
     readOnly: false,
     connection: {
       http: { url: "http://127.0.0.1:4000/mcp" },
@@ -37,7 +37,7 @@ beforeEach(() => {
       if (init?.method === "PUT") {
         const body = JSON.parse(String(init.body));
         puts.push(body);
-        settings = { ...settings, ...body };
+        settings = { ...settings, ...body, stdio: { ...settings.stdio, ...body.stdio } };
       }
       return json(settings);
     }
@@ -96,6 +96,10 @@ describe("Settings → AI assistant (MCP)", () => {
     expect(toggle("stdio").checked).toBe(true);
     expect(fieldValue("Server URL")).toBe("http://127.0.0.1:4000/mcp");
     expect(fieldValue("Claude Code")).toBe("claude mcp add --transport http sourcebook http://127.0.0.1:4000/mcp");
+    expect(fieldValue("Gemini CLI")).toBe("gemini mcp add --scope user --transport http sourcebook http://127.0.0.1:4000/mcp");
+    expect(fieldValue("OpenAI Codex — reads the token from SOURCEBOOK_TOKEN in its environment")).toBe(
+      "codex mcp add sourcebook --url http://127.0.0.1:4000/mcp --bearer-token-env-var SOURCEBOOK_TOKEN",
+    );
     expect(fieldValue("Command")).toBe("pnpm");
     expect(fieldValue("Working directory")).toBe(REPO);
     const stdioCommand = $$(".copy-field").filter((f) => $(".copy-field-head span", f).textContent === "Claude Code")[1];
@@ -117,6 +121,16 @@ describe("Settings → AI assistant (MCP)", () => {
     expect(puts).toEqual([{ http: { enabled: false } }, { stdio: { enabled: false } }, { readOnly: true }]);
     expect(toggle("Read-only access").checked).toBe(true);
     expect($$(".mcp-off")).toHaveLength(2);
+  });
+
+  it("shows stdio as unavailable when Sourcebook runs in a container", async () => {
+    settings = { ...settings, stdio: { enabled: false, available: false }, connection: { ...settings.connection, stdio: null } };
+    await openMcpTab();
+    expect(toggle("stdio").checked).toBe(false);
+    expect(toggle("stdio").disabled).toBe(true);
+    expect(field("Command")).toBeUndefined();
+    expect($$(".mcp-off").map((p) => p.textContent).join()).toContain("Not available in this installation");
+    expect(fieldValue("Server URL")).toBe("http://127.0.0.1:4000/mcp");
   });
 
   it("copies a value", async () => {

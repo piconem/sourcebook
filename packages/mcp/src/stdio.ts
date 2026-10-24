@@ -9,7 +9,7 @@
  *   SOURCEBOOK_MCP_AGENT_ID / _NAME only for a Sourcebook without accounts: the identity signing comments
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import type { McpSettings, Me } from "@sourcebook/shared";
+import type { McpSettingsView, Me } from "@sourcebook/shared";
 import { httpApi } from "./api.js";
 import { createSourcebookMcpServer, optionsFromEnv } from "./server.js";
 
@@ -23,8 +23,9 @@ const me = await api.json<Me>("GET", "/api/auth/me").catch((e) => {
 });
 // Settings chosen in Sourcebook (Settings → AI assistant). The server enforces them on every call anyway;
 // reading them here only avoids offering write tools in read-only mode.
-const settings = await api.json<McpSettings>("GET", "/api/settings/mcp").catch(() => null);
-if (settings && !settings.stdio.enabled) console.error("sourcebook-mcp: stdio access is disabled in Sourcebook settings; calls will be refused.");
+const settings = await api.json<McpSettingsView>("GET", "/api/settings/mcp").catch(() => null);
+if (settings && !settings.stdio.available) console.error("sourcebook-mcp: this Sourcebook does not offer stdio (it runs in a container); calls will be refused. Connect over HTTP.");
+else if (settings && !settings.stdio.enabled) console.error("sourcebook-mcp: stdio access is disabled in Sourcebook settings; calls will be refused.");
 const env = optionsFromEnv();
 const server = createSourcebookMcpServer(api, {
   ...env,

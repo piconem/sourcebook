@@ -11,6 +11,7 @@ const { app, accounts, initialAdminPassword, seededTemplates } = await buildApp(
   publicUrl: config.publicUrl,
   adminPassword: config.adminPassword,
   trustProxy: config.trustProxy,
+  mcpStdio: config.mcpStdio,
   seedTemplates: true,
 });
 await app.listen({ port: config.port, host: config.host });

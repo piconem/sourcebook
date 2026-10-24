@@ -10,7 +10,7 @@ import { fullTime, relativeTime } from "../comments/time";
 import { suggestUsername } from "../components/SettingsDialog";
 import { mcpSettingsKey } from "./McpSettingsSection";
 import { DeleteAgentDialog, footprintSummary } from "./DeleteAgentDialog";
-import { claudeCodeHttp, claudeCodeStdio, jsonHttp, mcpJsonWithEnvToken, withToken } from "./mcpSnippets";
+import { CODEX_TOKEN_VAR, claudeCodeHttp, claudeCodeStdio, codexHttp, geminiHttp, jsonHttp, mcpJsonWithEnvToken, shellQuote, withToken } from "./mcpSnippets";
 
 const lastUsed = (x: { lastUsedAt?: string; revoked: boolean }) => (x.revoked ? "revoked" : x.lastUsedAt ? relativeTime(x.lastUsedAt) : "never");
 
@@ -69,7 +69,13 @@ export function AgentsSection() {
                 value={mcpJsonWithEnvToken(mcp.connection.http)}
                 multiline
               />
-              <CopyField label="Claude Code (stdio)" value={claudeCodeStdio(connection.stdio)} />
+              <CopyField label="Gemini CLI" value={geminiHttp(connection.http)} />
+              <CopyField
+                label="OpenAI Codex — set the variable where you start codex (e.g. your shell profile)"
+                value={`export ${CODEX_TOKEN_VAR}=${shellQuote(issued.token)}\n${codexHttp(connection.http)}`}
+                multiline
+              />
+              {connection.stdio && <CopyField label="Claude Code (stdio)" value={claudeCodeStdio(connection.stdio)} />}
               <CopyField label="Other clients (JSON, HTTP)" value={jsonHttp(connection.http)} multiline />
             </>
           )}

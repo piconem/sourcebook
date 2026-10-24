@@ -6,19 +6,23 @@ Creates example Sourcebook templates through the REST API:
   - Research Project Proposal (simplified, inspired by EU Horizon Europe proposals)
   - Thesis
 
-Usage:  python3 scripts/create-example-templates.py [--api http://127.0.0.1:4000] [--replace] [--only <id>…]
+Usage:  SOURCEBOOK_TOKEN=sbu_… python3 scripts/create-example-templates.py [--api http://127.0.0.1:4000] [--replace] [--only <id>…]
+An access token (Settings → My agents) of an owner, or of a user who may create projects, is required: --token or
+the SOURCEBOOK_TOKEN environment variable.
 Existing templates with the same id are skipped, or deleted and recreated with --replace.
 --only limits the run to the given template ids (e.g. --only software-project).
 Retired templates (RETIRED) are deleted when --replace is given.
 """
 import argparse
 import json
+import os
 import sys
 import textwrap
 import urllib.error
 import urllib.request
 
 API = "http://127.0.0.1:4000"
+TOKEN = os.environ.get("SOURCEBOOK_TOKEN", "")
 
 
 def call(method, path, body=None):
@@ -26,7 +30,8 @@ def call(method, path, body=None):
         API + path,
         method=method,
         data=None if body is None else json.dumps(body).encode(),
-        headers={"content-type": "application/json"} if body is not None else {},
+        headers={**({"content-type": "application/json"} if body is not None else {}),
+                 **({"authorization": f"Bearer {TOKEN}"} if TOKEN else {})},
     )
     try:
         with urllib.request.urlopen(req) as res:
@@ -1192,13 +1197,17 @@ def create_sections(tid, sections, parent=None, counts=None):
 
 
 def main():
-    global API
+    global API, TOKEN
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--api", default=API)
     ap.add_argument("--replace", action="store_true", help="delete and recreate templates that already exist")
     ap.add_argument("--only", nargs="+", metavar="ID", help="only these template ids")
+    ap.add_argument("--token", default=TOKEN, help="access token (default: $SOURCEBOOK_TOKEN)")
     args = ap.parse_args()
     API = args.api.rstrip("/")
+    TOKEN = args.token
+    if not TOKEN:
+        raise SystemExit("An access token is required: --token sbu_… or SOURCEBOOK_TOKEN (Settings → My agents)")
     existing = {t["id"] for t in call("GET", "/api/templates")}
     if args.replace:
         for old, new in RETIRED.items():

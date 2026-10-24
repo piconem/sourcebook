@@ -52,6 +52,7 @@ Command-line option, else environment variable, else default:
 | `--public-url` / `SOURCEBOOK_PUBLIC_URL` | `http://127.0.0.1:<port><base>` | address users reach (shown in MCP connection hints; `https` makes the session cookie `Secure`) |
 | `SOURCEBOOK_ADMIN_PASSWORD` | generated | password of the owner account created at the first start |
 | `SOURCEBOOK_TRUST_PROXY=1` | off | behind a reverse proxy: trust `X-Forwarded-*` (client IP for sign-in throttling) |
+| `SOURCEBOOK_MCP_STDIO` | on (off in a container) | offer the MCP server over stdio as well as HTTP; see [AI assistant](ai-assistant.md#stdio) |
 
 One client build works under any base path (relative asset URLs; the server tells the page its prefix). In development
 `SOURCEBOOK_BASE_PATH` is read by Vite as well. Several Sourcebooks can share a domain under different prefixes: each

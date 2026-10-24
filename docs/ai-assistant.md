@@ -5,28 +5,62 @@
 projects and templates with you — sections, sub-blocks, lines, comments and references — through the same REST API
 (same validation; your open editor updates live). The Sourcebook server must be running.
 
-**Connecting**: create an access token in **Settings → My agents** — Sourcebook shows it once, with ready-to-copy
+## Connecting
+Create an access token in **Settings → My agents** — Sourcebook shows it once, with ready-to-copy
 commands — and configure the MCP server **once**. Then register your agents' identities (same page, or let the
 assistant call `register_agent`): every tool takes `agent: "<id>"`, so several agents (a writer, a reviewer…) sharing
 the connection are told apart, each signed with its name and yours; without `agent`, your default agent acts.
 **Settings → AI assistant (MCP)** (owner) enables or disables each transport and can make every agent read-only; the
 server enforces it.
 
-**HTTP** (built into the Sourcebook server; local requests, or the host of `SOURCEBOOK_PUBLIC_URL`):
-```bash
-claude mcp add --transport http sourcebook http://127.0.0.1:4000/mcp --header "Authorization: Bearer sbu_…"
+## Clients
+Sourcebook speaks standard MCP over **streamable HTTP**, so any MCP client works. Settings → AI assistant (MCP) and,
+with your token filled in, Settings → My agents show these commands ready to copy.
+
+| Client | How to add Sourcebook |
+|---|---|
+| **Claude Code** | `claude mcp add --transport http sourcebook http://127.0.0.1:4000/mcp --header "Authorization: Bearer sbu_…"` |
+| **Gemini CLI** | `gemini mcp add --scope user --transport http --header "Authorization: Bearer sbu_…" sourcebook http://127.0.0.1:4000/mcp` |
+| **OpenAI Codex CLI** | `export SOURCEBOOK_TOKEN=sbu_…` then `codex mcp add sourcebook --url http://127.0.0.1:4000/mcp --bearer-token-env-var SOURCEBOOK_TOKEN` (Codex reads the token from that variable, not from an inline header) |
+| **Claude Desktop** | stdio, below (not available when Sourcebook runs in a container) |
+| **Other clients** | the JSON below (also the format of Gemini CLI's `~/.gemini/settings.json`) |
+
+```json
+{ "mcpServers": { "sourcebook": { "type": "http", "url": "http://127.0.0.1:4000/mcp", "headers": { "Authorization": "Bearer sbu_…" } } } }
 ```
-Or once per project, in a committed `.mcp.json` that reads the token from the environment (`SOURCEBOOK_TOKEN=sbu_… claude`):
+Codex as a file (`~/.codex/config.toml`):
+```toml
+[mcp_servers.sourcebook]
+url = "http://127.0.0.1:4000/mcp"
+bearer_token_env_var = "SOURCEBOOK_TOKEN"
+```
+Claude Code, once per project, in a committed `.mcp.json` that reads the token from the environment
+(`SOURCEBOOK_TOKEN=sbu_… claude`):
 ```json
 { "mcpServers": { "sourcebook": { "type": "http", "url": "http://127.0.0.1:4000/mcp", "headers": { "Authorization": "Bearer ${SOURCEBOOK_TOKEN}" } } } }
 ```
-**stdio** (the client starts the process):
+The HTTP endpoint accepts local requests and the host of `SOURCEBOOK_PUBLIC_URL`. Gemini CLI enables MCP servers only
+in folders it trusts: `gemini mcp list` shows *Disabled* in an untrusted folder.
+
+**ChatGPT and the model APIs.** The OpenAI Responses API calls remote MCP servers from OpenAI's cloud: Sourcebook must
+then be reachable on a public **HTTPS** address (`SOURCEBOOK_PUBLIC_URL`, behind a reverse proxy), and the token goes in
+the `Authorization` header of its MCP tool. The Gemini API SDKs connect to MCP servers from your own program, like any
+client above. ChatGPT connectors are set up with OAuth or without authentication, while Sourcebook uses personal access
+tokens: ChatGPT is not supported for now (check the current ChatGPT documentation before relying on this).
+
+## stdio
+The client starts a local process that talks to Sourcebook over HTTP:
 ```bash
 claude mcp add -e SOURCEBOOK_TOKEN=sbu_… sourcebook -- pnpm --silent --dir "/path/to/sourcebook" --filter @sourcebook/mcp exec tsx src/stdio.ts
 ```
 Environment (stdio): `SOURCEBOOK_TOKEN` (your access token), `SOURCEBOOK_URL` (default `http://127.0.0.1:4000`, include
 the base path if any), `SOURCEBOOK_MCP_READONLY=1` (reading tools only).
 
+stdio needs a checkout of Sourcebook on the machine of the AI client. It is therefore **not available when Sourcebook
+runs in a container** (the image sets `SOURCEBOOK_CONTAINER=1`): Settings shows it as unavailable, and the server
+refuses stdio calls. `SOURCEBOOK_MCP_STDIO=true|false` overrides the default (on natively, off in a container).
+
+## Agents, locks and Ask AI
 `whoami` tells an agent who it is, whom it works for and the other agents of its user; `list_participants` shows the
 people and agents of a project.
 Before a longer piece of work on a sub-block an agent takes it with `lock_subblock` and releases it with

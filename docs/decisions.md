@@ -584,6 +584,18 @@ prompts is parsed by the MCP server's reference parser.
 - Publishing is a manual step (`docker/push.sh`: buildx amd64 + arm64 to `ghcr.io/piconem/sourcebook`, refusing a dirty
   tree or an existing version). No CI workflow yet.
 
+## MCP clients and stdio in a container
+- One standard transport (streamable HTTP with a bearer token) serves every client; client support is only connection
+  hints: Claude Code, Gemini CLI (`gemini mcp add -t http -H …`; its settings.json takes the same JSON as other
+  clients) and OpenAI Codex (`codex mcp add --url … --bearer-token-env-var SOURCEBOOK_TOKEN`: Codex takes no inline
+  header). Checked with Gemini CLI 0.65 (`gemini mcp list` → Connected) and Codex CLI 0.164 (configuration accepted).
+- stdio means a process started by the AI client on its machine, from a checkout of Sourcebook: impossible inside a
+  container. `config.mcpStdio` (default: off when `SOURCEBOOK_CONTAINER=1` or `/.dockerenv`, overridable with
+  `SOURCEBOOK_MCP_STDIO`) makes the settings report `stdio: { enabled: false, available: false }` with no connection
+  hints, refuses turning it on (400) and refuses stdio calls (403), whatever `settings.json` says.
+- ChatGPT connectors are set up with OAuth or without authentication on a public HTTPS URL; Sourcebook's personal
+  tokens do not fit: not supported for now.
+
 ## Known limitations
 - Users with read access cannot select text inside a sub-block to anchor a comment (the body is inert): they comment
   on the whole sub-block.

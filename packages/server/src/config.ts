@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -25,7 +26,15 @@ export interface ServerConfig {
   adminPassword?: string;
   /** Behind a reverse proxy: trust X-Forwarded-* (client IP, https). */
   trustProxy: boolean;
+  /**
+   * Offer the MCP server over stdio (a process the AI client starts on this machine). Off by default in a container,
+   * where that process would have to run inside the container.
+   */
+  mcpStdio: boolean;
 }
+
+/** Running in a container: the image sets SOURCEBOOK_CONTAINER=1 (Docker also leaves /.dockerenv). */
+export const inContainer = (env: NodeJS.ProcessEnv = process.env) => truthy(env.SOURCEBOOK_CONTAINER) || existsSync("/.dockerenv");
 
 const PortSchema = z.coerce.number().int().min(1).max(65535);
 
@@ -54,5 +63,6 @@ export function loadConfig(argv = process.argv.slice(2), env: NodeJS.ProcessEnv 
     publicUrl,
     adminPassword: env.SOURCEBOOK_ADMIN_PASSWORD || undefined,
     trustProxy: truthy(env.SOURCEBOOK_TRUST_PROXY),
+    mcpStdio: env.SOURCEBOOK_MCP_STDIO !== undefined && env.SOURCEBOOK_MCP_STDIO !== "" ? truthy(env.SOURCEBOOK_MCP_STDIO) : !inContainer(env),
   };
 }

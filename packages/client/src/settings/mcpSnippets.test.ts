@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcpJsonWithEnvToken, withToken, claudeCodeHttp, claudeCodeStdio, desktopJsonStdio, jsonHttp, shellQuote } from "./mcpSnippets";
+import { mcpJsonWithEnvToken, withToken, claudeCodeHttp, claudeCodeStdio, codexHttp, codexToml, desktopJsonStdio, geminiHttp, jsonHttp, shellQuote } from "./mcpSnippets";
 
 const stdio = {
   command: "pnpm",
@@ -45,6 +45,14 @@ describe("MCP connection snippets", () => {
   it("fills in the user's token", () => {
     const c = withToken({ http: { url: "u", headers: { Authorization: "Bearer <your access token>" } }, stdio: { ...stdio, env: { SOURCEBOOK_TOKEN: "<your access token>" } } }, "sbk_1");
     expect(c.http.headers).toEqual({ Authorization: "Bearer sbk_1" });
-    expect(c.stdio.env).toEqual({ SOURCEBOOK_TOKEN: "sbk_1" });
+    expect(c.stdio!.env).toEqual({ SOURCEBOOK_TOKEN: "sbk_1" });
+    expect(withToken({ http: { url: "u" }, stdio: null }, "sbk_1").stdio).toBeNull();
+  });
+
+  it("builds the Gemini CLI and OpenAI Codex configurations", () => {
+    const h = { url: "http://127.0.0.1:4000/mcp", headers: { Authorization: "Bearer sbu_x" } };
+    expect(geminiHttp(h)).toBe("gemini mcp add --scope user --transport http --header 'Authorization: Bearer sbu_x' sourcebook http://127.0.0.1:4000/mcp");
+    expect(codexHttp(h)).toBe("codex mcp add sourcebook --url http://127.0.0.1:4000/mcp --bearer-token-env-var SOURCEBOOK_TOKEN");
+    expect(codexToml(h)).toBe('[mcp_servers.sourcebook]\nurl = "http://127.0.0.1:4000/mcp"\nbearer_token_env_var = "SOURCEBOOK_TOKEN"');
   });
 });

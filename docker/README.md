@@ -105,8 +105,10 @@ location /marco/sourcebook/ {
 Several instances on the same domain (`/marco/sourcebook`, `/luca/sourcebook`) are separate compose projects with
 their own `.env` (container name, port, data folder, base path); their sign-in cookies do not mix.
 
-AI assistants connect to `<SOURCEBOOK_PUBLIC_URL>/mcp` with a personal access token: *Settings → AI assistant* shows the
-ready-made command.
+AI assistants (Claude Code, Gemini CLI, OpenAI Codex…) connect to `<SOURCEBOOK_PUBLIC_URL>/mcp` with a personal access
+token: *Settings → AI assistant* shows the ready-made commands. Only **HTTP** is offered in the container: with **stdio**
+the AI client would start the MCP process itself, on its own machine, and it cannot start it inside the container — so
+the image sets `SOURCEBOOK_CONTAINER=1`, Settings shows stdio as unavailable and the server refuses stdio calls.
 
 ## Publish (GHCR)
 

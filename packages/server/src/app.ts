@@ -64,6 +64,8 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** Built web client to serve (default packages/client/dist, when it exists). */
   clientDist?: string | null;
+  /** Offer the MCP server over stdio (default true; off in a container, see config.ts). */
+  mcpStdio?: boolean;
   /** Add the templates shipped with Sourcebook (Sourcebook Demo) to the workspace, once each (default false). */
   seedTemplates?: boolean;
 }
@@ -90,6 +92,7 @@ export async function buildApp(workspaceDir: string, opts: AppOptions = {}) {
   const basePath = opts.basePath ?? "";
   const port = opts.port ?? 4000;
   const publicUrl = opts.publicUrl ?? `http://127.0.0.1:${port}${basePath}`;
+  const stdioAvailable = opts.mcpStdio ?? true;
   const accounts = new AccountStore(workspaceDir);
   const { generatedPassword } = await accounts.load({ owner: await ownerProfile(workspaceDir, configDir), password: opts.adminPassword });
   const settings = await new SettingsStore(accounts.dir, configDir).load();
@@ -109,13 +112,15 @@ export async function buildApp(workspaceDir: string, opts: AppOptions = {}) {
     if (origin === "mcp" && transport && !readingSettings) {
       const mcp = settings.getMcp();
       const blocked =
-        transport === "stdio" && !mcp.stdio.enabled
-          ? "The Sourcebook MCP server over stdio is disabled (Settings → AI assistant)."
-          : transport === "http" && !mcp.http.enabled
-            ? "The Sourcebook MCP server over HTTP is disabled (Settings → AI assistant)."
-            : mcp.readOnly && req.method !== "GET" && req.method !== "HEAD"
-              ? "The assistant has read-only access to Sourcebook (Settings → AI assistant)."
-              : null;
+        transport === "stdio" && !stdioAvailable
+          ? "The Sourcebook MCP server over stdio is not available in this installation (it runs in a container): connect over HTTP."
+          : transport === "stdio" && !mcp.stdio.enabled
+            ? "The Sourcebook MCP server over stdio is disabled (Settings → AI assistant)."
+            : transport === "http" && !mcp.http.enabled
+              ? "The Sourcebook MCP server over HTTP is disabled (Settings → AI assistant)."
+              : mcp.readOnly && req.method !== "GET" && req.method !== "HEAD"
+                ? "The assistant has read-only access to Sourcebook (Settings → AI assistant)."
+                : null;
       if (blocked) {
         reply.code(403).send({ error: blocked });
         return;
@@ -145,7 +150,7 @@ export async function buildApp(workspaceDir: string, opts: AppOptions = {}) {
   await app.register(
     async (scope) => {
       await scope.register(authRoutes(auth, workspace));
-      await scope.register(settingsRoutes(settings, { publicUrl, basePath }));
+      await scope.register(settingsRoutes(settings, { publicUrl, basePath, stdioAvailable }));
       await scope.register(
         workspaceRoutes(workspace, accounts, () => registry.list().map((t) => ({ type: t.type, label: t.label, sourceExt: t.sourceExt }))),
       );

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { api } from "../api/client";
 import { CopyField } from "../components/CopyField";
-import { claudeCodeHttp, claudeCodeStdio, desktopJsonStdio, jsonHttp } from "./mcpSnippets";
+import { CODEX_TOKEN_VAR, claudeCodeHttp, claudeCodeStdio, codexHttp, codexToml, desktopJsonStdio, geminiHttp, jsonHttp } from "./mcpSnippets";
 import { useIsOwner } from "../auth/AuthContext";
 
 export const mcpSettingsKey = ["settings", "mcp"] as const;
@@ -47,7 +47,7 @@ export function McpSettingsSection() {
   return (
     <div className="mcp-settings">
       <p className="muted small">
-        The MCP server lets an AI assistant (Claude Code, Claude Desktop, other MCP clients) read and edit your projects and templates
+        The MCP server lets an AI assistant (Claude Code, Gemini CLI, OpenAI Codex, Claude Desktop, other MCP clients) read and edit your projects and templates
         with you. One configuration serves all your agents: it carries your access token (Settings → My agents, where the
         commands are ready with it); each agent then names itself in its calls.
         {!owner && " Only the owner of this Sourcebook can change these settings."}
@@ -65,7 +65,10 @@ export function McpSettingsSection() {
           <div className="mcp-params">
             <CopyField label="Server URL" value={http.url} />
             <CopyField label="Claude Code" value={claudeCodeHttp(http)} />
-            <CopyField label="Other clients (JSON)" value={jsonHttp(http)} multiline />
+            <CopyField label="Gemini CLI" value={geminiHttp(http)} />
+            <CopyField label={`OpenAI Codex — reads the token from ${CODEX_TOKEN_VAR} in its environment`} value={codexHttp(http)} />
+            <CopyField label="OpenAI Codex (~/.codex/config.toml)" value={codexToml(http)} multiline />
+            <CopyField label="Other clients, Gemini CLI settings.json (JSON)" value={jsonHttp(http)} multiline />
           </div>
         ) : (
           <p className="muted small mcp-off">Disabled: requests to {http.url} are refused.</p>
@@ -75,12 +78,17 @@ export function McpSettingsSection() {
       <section className="mcp-mode">
         <Toggle
           checked={data.stdio.enabled}
-          disabled={saving || !owner}
+          disabled={saving || !owner || !data.stdio.available}
           onChange={(v) => update({ stdio: { enabled: v } })}
           label="stdio"
           description="The client starts a local process that talks to Sourcebook."
         />
-        {data.stdio.enabled ? (
+        {!stdio ? (
+          <p className="muted small mcp-off">
+            Not available in this installation: Sourcebook runs in a container, where the client could not start the process. Connect
+            over HTTP — every client above supports it.
+          </p>
+        ) : data.stdio.enabled ? (
           <div className="mcp-params">
             <CopyField label="Command" value={stdio.command} />
             <CopyField label="Arguments" value={stdio.args.join(" ")} />
