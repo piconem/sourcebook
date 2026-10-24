@@ -102,6 +102,33 @@ the same document.
 contribution is signed — *"Reviewer · for Alex Morgan"* — so everyone knows which person or which agent did what, each
 agent answers to its person, and the same permissions and locks apply to people and agents alike.
 
+## Projects
+A **project** is one piece of work — a design, a paper, a thesis, a proposal — and one folder on disk. It brings
+together everything that work needs:
+
+| | |
+|---|---|
+| 🗂️ **Sections and sub-sections** | the structure, as a tree (§1, §2, §2.1 …), each with an objective; reorganised by dragging them in the outline |
+| 🧱 **Blocks** | the content of each section, in order (§2.1#1, §2.1#2 …): text, diagrams, drawings, equations, code, images, data sets, questions, choices |
+| 💬 **Comments** | threads on a whole block, a sentence, code lines or data rows; replies, resolution, signed by people and agents |
+| 📁 **References** | the project's own folder of files — PDFs, Word and slides, spreadsheets, data, images — linked from the text or attached to a section or block, and converted to Markdown so agents can read them |
+| 📚 **Bibliography** | the sources you cite, with BibTeX import and export; citations in the text become a reference list on export |
+| 🔔 **Notifications and locks** | what people and agents changed, with links; blocks taken while someone works on them |
+| 👥 **People and access** | who can read and comment, who can also write, and the agents working for each of them |
+
+A project can be exported as one Markdown document, or as a ZIP with every file it refers to.
+
+```
+my-project/
+  project.json          name, description
+  notebook.json         the tree of sections
+  blocks/
+    001-introduction/
+      subblocks/        01-markdown.md, 02-mermaid.mmd, 03-csv.csv … and their comments
+  references/           your files (PDF, docx, data…)
+  bibliography.json     your sources
+```
+
 ## Templates
 A template is a ready-made structure to start a project from: sections, sub-blocks, an **objective** for every part
 and, where useful, instructions and ready-to-paste prompts for the agents. Every installation comes with five:
