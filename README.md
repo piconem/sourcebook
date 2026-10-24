@@ -5,7 +5,8 @@
 <h1 align="center">Sourcebook</h1>
 
 <p align="center">
-  A notebook of modular blocks where people and AI agents think, write and decide together.
+  <strong>Stay in control of your design, writing and development.</strong><br />
+  A notebook of modular blocks where AI agents support your work — in a structured, visible and controlled way.
 </p>
 
 <p align="center">
@@ -31,6 +32,10 @@ Sourcebook is a web application for writing **structured documents made of block
 papers, theses, project proposals, requirements, decision logs. It is the place where ideas, structure and decisions
 are worked out *before* they become code, papers or products.
 
+Its purpose is to keep **you in control** of that process. AI agents and LLMs can help — draft, review, analyse data,
+read your documents — but they work *inside* the structure you define, on the blocks you point them to, and everything
+they do is visible, signed and reversible. You decide; agents support.
+
 You run it yourself (on your computer, a server or in Docker). Everything is saved as **plain files** in a folder of
 yours: Markdown, source code, CSV, JSON. Nothing is locked inside a database, and everything can be versioned with Git.
 
@@ -51,25 +56,74 @@ Every block has an **objective** (what it must contain), its own **comments**, a
 enough to discuss, review, assign and change one at a time — by you, by a colleague or by an AI agent — without
 stepping on each other.
 
+## You stay in control
+- **You set the structure and the goals**: sections, blocks and the **objective** of each one tell agents exactly what
+  is expected — and nothing else.
+- **Precise, scoped requests**: *Ask AI* turns a block, some lines or a comment thread into a request about exactly that
+  part; agents address blocks and lines (`§2.1#3:L10-14`), not "the document".
+- **Agents propose, you decide**: they can comment instead of editing; you reply, accept or resolve. **Read-only**
+  mode lets agents read and comment without changing anything.
+- **Everything is visible and signed**: every comment and change carries its author — *"Reviewer · for Alex Morgan"* —
+  and agents report what they changed with **notifications** that link to each modified block.
+- **Protect what you are working on**: **lock** a block and nobody — person or agent — can change it until you release it.
+- **Reversible**: revoke an agent at once, or delete it with everything it wrote; your content is plain files you can
+  keep under Git.
+- **Your data stays yours**: self-hosted, no cloud service required; agents reach Sourcebook only with your personal
+  token and never have more rights than you.
+
 ## Ways of working
 
 **🧑 Alone** — Organise a complex piece of work as an outline of blocks; mix text, diagrams, data and decisions; keep
 open questions and options next to the content; start from a template (Software Project, Scientific Paper, Thesis,
 Research Proposal, or the *Sourcebook Demo* tour).
 
-**🧑 + 🤖 Alone with AI agents** — Connect an assistant — Claude Code, Gemini CLI, OpenAI Codex or any MCP client —
-through the built-in **MCP server**. Agents
-read the whole project (including your PDFs and documents, converted automatically), write and edit blocks, comment
-precise lines, and tell you what they changed with notifications. Several agents can work with you at once — a
-*writer*, a *reviewer* — each with its own name and picture.
+**🧑 + 🤖 Alone, supported by AI agents** — Connect an assistant — Claude Code, Gemini CLI, OpenAI Codex or any MCP
+client — through the built-in **MCP server**, and bring it in when you need it. Agents read the project (including
+your PDFs and documents, converted automatically), comment precise lines, draft or revise the blocks you ask for, and
+tell you what they changed with notifications. You can give each agent a role — a *writer*, a *reviewer*, a *data
+analyst* — each with its own name and picture.
 
 **👥 With other people** — Invite users and give each one **read** (read and comment) or **write** access per project.
 Comment threads, replies and resolutions, change notifications, live updates and locks let several people work on
 the same document.
 
-**👥 + 🤖 A team with agents** — Each person connects their own agents with one personal token. Every contribution is
-signed — *"Reviewer · for Mario Rossi"* — so everyone knows which person or which agent did what, and the same
-permissions and locks apply to people and agents alike.
+**👥 + 🤖 A team supported by agents** — Each person connects their own agents with one personal token. Every
+contribution is signed — *"Reviewer · for Alex Morgan"* — so everyone knows which person or which agent did what, each
+agent answers to its person, and the same permissions and locks apply to people and agents alike.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="images/screenshots/03-editor.webp" alt="The editor: outline of sections, objectives, a Markdown block" /><br /><sub><b>The editor</b> — sections in the outline, typed blocks, an objective for each.</sub></td>
+    <td width="50%"><img src="images/screenshots/04-comments-on-text.webp" alt="Comment of a Reviewer agent on a sentence, with replies" /><br /><sub><b>Agents propose, you decide</b> — a Reviewer agent comments a sentence; you and the Writer agent reply.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="images/screenshots/07-code-review-and-lock.webp" alt="Review comment on code lines and a block locked by an agent" /><br /><sub><b>Precise review</b> — comments on code lines; a block locked while an agent works on it.</sub></td>
+    <td><img src="images/screenshots/08-csv-data-with-row-comments.webp" alt="CSV data set with comments of a Data analyst agent on rows" /><br /><sub><b>Data to reason about</b> — a CSV data set; a Data analyst agent comments individual rows.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="images/screenshots/11-agent-notifications.webp" alt="Notifications from agents listing the blocks they changed" /><br /><sub><b>Nothing happens behind your back</b> — agents report what they changed, with links to each block.</sub></td>
+    <td><img src="images/screenshots/17-settings-agents.webp" alt="Settings: access tokens and agent identities" /><br /><sub><b>Your agents, your rules</b> — one personal token, named agents, revoke or delete them at any time.</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><b>More screenshots</b> — projects, templates, diagrams, drawings, decisions, references, bibliography, Ask AI, settings, dark theme</summary>
+<br />
+
+| | |
+|---|---|
+| ![Projects](images/screenshots/01-projects.webp) <br /><sub>Projects</sub> | ![Templates](images/screenshots/02-templates.webp) <br /><sub>Templates</sub> |
+| ![Mermaid diagrams](images/screenshots/05-mermaid-diagrams.webp) <br /><sub>Mermaid diagrams</sub> | ![Drawing](images/screenshots/06-drawing.webp) <br /><sub>Hand-made drawings (Excalidraw)</sub> |
+| ![CSV column summary](images/screenshots/09-csv-column-summary.webp) <br /><sub>Column summary of a data set</sub> | ![Questions and decisions](images/screenshots/10-questions-and-decisions.webp) <br /><sub>Open questions and decisions</sub> |
+| ![All comments](images/screenshots/12-all-comments.webp) <br /><sub>Every comment of the project</sub> | ![References](images/screenshots/13-references.webp) <br /><sub>References, readable by the assistant</sub> |
+| ![Reference converted for the assistant](images/screenshots/14-reference-converted-for-assistant.webp) <br /><sub>A PDF converted to Markdown for the assistant</sub> | ![Bibliography](images/screenshots/15-bibliography.webp) <br /><sub>Bibliography</sub> |
+| ![Ask AI](images/screenshots/16-ask-ai.webp) <br /><sub>Ask AI: a scoped request, ready to paste</sub> | ![MCP settings](images/screenshots/18-settings-mcp.webp) <br /><sub>Connecting Claude Code, Gemini CLI, OpenAI Codex</sub> |
+| ![Users](images/screenshots/19-settings-users.webp) <br /><sub>Users</sub> | ![Project access](images/screenshots/20-settings-project-access.webp) <br /><sub>Read or write access per project</sub> |
+| ![Dark theme](images/screenshots/21-dark-theme.webp) <br /><sub>Dark theme</sub> | |
+
+</details>
 
 ## Getting started
 
