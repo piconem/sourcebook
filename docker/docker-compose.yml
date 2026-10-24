@@ -1,0 +1,30 @@
+# Sourcebook with Docker Compose.
+#
+#   cd docker
+#   cp .env.example .env          # then adjust it
+#   docker compose up -d
+#   docker compose logs sourcebook   # first start: owner username and password
+#
+# Uses the image built by ./build.sh (or pulled from GHCR once published). Every setting comes from .env.
+name: sourcebook
+
+services:
+  sourcebook:
+    image: ${SOURCEBOOK_IMAGE:-ghcr.io/piconem/sourcebook}:${SOURCEBOOK_VERSION:-latest}
+    container_name: ${SOURCEBOOK_CONTAINER_NAME:-sourcebook}
+    restart: unless-stopped
+    # Owner of the files in the workspace folder (default: the first user of a Linux machine).
+    user: "${SOURCEBOOK_UID:-1000}:${SOURCEBOOK_GID:-1000}"
+    ports:
+      # Host address and port → container port 4000. 127.0.0.1 keeps it on this machine (put a reverse proxy in front
+      # for other users); 0.0.0.0 exposes it on the network.
+      - "${SOURCEBOOK_BIND:-127.0.0.1}:${SOURCEBOOK_PORT:-4000}:4000"
+    volumes:
+      # The workspace: projects, templates and .sourcebook/ (accounts, sessions, settings). Back it up.
+      - ${SOURCEBOOK_DATA:-./data}:/data
+    environment:
+      SOURCEBOOK_BASE_PATH: ${SOURCEBOOK_BASE_PATH:-/}
+      SOURCEBOOK_PUBLIC_URL: ${SOURCEBOOK_PUBLIC_URL:-http://127.0.0.1:4000}
+      SOURCEBOOK_TRUST_PROXY: ${SOURCEBOOK_TRUST_PROXY:-false}
+      SOURCEBOOK_ADMIN_PASSWORD: ${SOURCEBOOK_ADMIN_PASSWORD:-}
+      TZ: ${TZ:-Europe/Rome}

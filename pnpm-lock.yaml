@@ -208,6 +208,9 @@ importers:
       remark-stringify:
         specifier: ^11.0.0
         version: 11.0.0
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       turndown:
         specifier: ^7.2.4
         version: 7.2.4
@@ -233,9 +236,6 @@ importers:
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
-      tsx:
-        specifier: ^4.23.15
-        version: 4.23.15
 
   packages/shared:
     dependencies:

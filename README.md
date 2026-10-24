@@ -21,13 +21,16 @@ The workspace folder holds all projects and templates, plus `.sourcebook/` with 
 folders are created automatically, and the **Sourcebook Demo** template is added at the first start (see
 [Example templates](#example-templates)).
 
+**Docker**: `docker/build.sh` builds the image, `docker/docker-compose.yml` (settings in `docker/.env`) runs it with the
+workspace in a mounted folder, `docker/push.sh` publishes it on GHCR — see [docker/README.md](docker/README.md).
+
 **Configuration** (command-line option, else environment variable, else default):
 
 | Option / variable | Default | |
 |---|---|---|
 | `--workspace` / `SOURCEBOOK_WORKSPACE` | `~/Sourcebook` | where Sourcebook works: projects, templates, `.sourcebook/` |
 | `--host` / `SOURCEBOOK_HOST` | `127.0.0.1` | interface to listen on (`0.0.0.0` to accept other machines, e.g. in a container) |
-| `--port` / `PORT` | `4000` | port |
+| `--port` / `PORT` | `4000` | port — the only one: web interface, REST API (`/api`) and MCP server (`/mcp`) share it |
 | `--base-path` / `SOURCEBOOK_BASE_PATH` | `/` | URL prefix, e.g. `/marco/sourcebook` for `https://mydomain.it/marco/sourcebook/` behind a reverse proxy |
 | `--public-url` / `SOURCEBOOK_PUBLIC_URL` | `http://127.0.0.1:<port><base>` | address users reach (shown in MCP connection hints; `https` makes the session cookie `Secure`) |
 | `SOURCEBOOK_ADMIN_PASSWORD` | generated | password of the owner account created at the first start |

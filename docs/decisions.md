@@ -569,6 +569,19 @@ prompts is parsed by the MCP server's reference parser.
 - Only `index.ts` (the real server) enables it (`buildApp({ seedTemplates: true })`); tests and embedders start from an
   empty workspace.
 
+## Container image
+- `docker/Dockerfile`, multi-stage on `node:24-bookworm-slim` (glibc, for the prebuilt `@napi-rs/canvas` binaries):
+  a build stage with every dependency builds the web client; a prod stage installs only the runtime dependencies of
+  the server and its workspace packages (`pnpm --filter "@sourcebook/server..." install --prod`); the runtime stage
+  keeps the monorepo layout under `/app`, so the paths used in development (client `dist`) work unchanged.
+- The server still runs the TypeScript sources through tsx (`node --import tsx`), like `pnpm start`: no separate
+  compile step to maintain. tsx is therefore a runtime dependency of the server. `node` is PID 1 and the server closes
+  on SIGTERM/SIGINT (at most 3 s, since live-update streams stay open), so `docker stop` is immediate.
+- Unprivileged user (compose: `SOURCEBOOK_UID:GID`, default 1000), a single volume `/data` = the workspace,
+  `HEALTHCHECK` on `<base path>/api/auth/me` (any answer below 500).
+- Publishing is a manual step (`docker/push.sh`: buildx amd64 + arm64 to `ghcr.io/piconem/sourcebook`, refusing a dirty
+  tree or an existing version). No CI workflow yet.
+
 ## Known limitations
 - Users with read access cannot select text inside a sub-block to anchor a comment (the body is inert): they comment
   on the whole sub-block.

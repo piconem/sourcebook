@@ -14,6 +14,15 @@ const { app, accounts, initialAdminPassword, seededTemplates } = await buildApp(
   seedTemplates: true,
 });
 await app.listen({ port: config.port, host: config.host });
+// docker stop / Ctrl+C: finish the requests in progress, then exit (as PID 1 in a container nothing else would).
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    app.log.info(`${signal}: shutting down`);
+    // Live-update streams (SSE) stay open: do not wait for them more than a few seconds.
+    setTimeout(() => process.exit(0), 3000).unref();
+    void app.close().finally(() => process.exit(0));
+  });
+}
 app.log.info(`Sourcebook workspace: ${config.workspace}`);
 app.log.info(`Sourcebook is at ${config.publicUrl}/`);
 if (seededTemplates.length) app.log.info(`Templates added to the workspace: ${seededTemplates.join(", ")}`);

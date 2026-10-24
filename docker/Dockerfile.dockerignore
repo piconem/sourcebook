@@ -1,0 +1,18 @@
+# Used by BuildKit for docker/Dockerfile (context: the repository root).
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/.vite
+**/*.log
+**/.env
+**/.env.*
+.git
+.claude
+docker/data
+docs
+example-project
+scripts
+**/test
+**/*.test.ts
+**/*.test.tsx

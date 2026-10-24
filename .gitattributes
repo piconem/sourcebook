@@ -1,0 +1,19 @@
+# Text files keep LF line endings in the repository; Git converts them on checkout only where allowed below.
+* text=auto
+
+# Run inside Linux (containers, WSL, Git Bash) even when checked out on Windows: always LF.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.dockerignore text eol=lf
+docker/.env.example text eol=lf
+docker/docker-compose.yml text eol=lf
+
+# Binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.excalidraw text

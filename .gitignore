@@ -45,3 +45,7 @@ Thumbs.db
 # Sourcebook user data lives outside the repository (~/Sourcebook, ~/.config/sourcebook).
 # If you point --workspace at a folder inside the repo, ignore it here, e.g.:
 # /workspace/
+
+# Docker: local settings and the default workspace of docker compose
+/docker/.env
+/docker/data/
