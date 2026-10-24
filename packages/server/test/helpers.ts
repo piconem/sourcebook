@@ -29,7 +29,7 @@ export function scopeUrl(url: string, id = "test", kind = "projects") {
  */
 export async function buildProjectApp(opts: { workspace?: string; configDir?: string } = {}) {
   const workspace = opts.workspace ?? (await tempProject());
-  const { app: server } = await buildApp(workspace, { configDir: opts.configDir });
+  const { app: server } = await buildApp(workspace, { auth: false, configDir: opts.configDir });
   if (!existsSync(join(workspace, "projects", "test"))) {
     const res = await server.inject({ method: "POST", url: "/api/projects", payload: { name: "Test" } });
     if (res.statusCode !== 201) throw new Error(res.body);

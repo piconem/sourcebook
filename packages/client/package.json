@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "build": "vite build"
   },
   "dependencies": {
     "@codemirror/language": "^6.12.4",

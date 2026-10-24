@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { UsernameSchema, type Author } from "@sourcebook/shared";
+import type { Author } from "@sourcebook/shared";
 import { z } from "zod";
 import { ApiError, type SourcebookApi } from "../api.js";
 import { NotebookView } from "../notebook.js";
@@ -9,10 +9,11 @@ import { RefError, parseProject } from "../refs.js";
 export interface ToolContext {
   server: McpServer;
   api: SourcebookApi;
-  /** Default author of what the assistant signs (comments, notifications…): this connection's agent. */
+  /**
+   * The agent signing comments and notifications. With accounts, the server signs with the agent of the token
+   * (this is what it reported); single-user mode, the connection's identity (environment / URL).
+   */
   author: Author;
-  /** The author for one call: `agent` when the call names one, else the connection's agent. */
-  as(agent?: AgentInput): Author;
   readOnly: boolean;
   open(project: string): Promise<NotebookView>;
 }
@@ -23,36 +24,8 @@ export const projectParam = z
 export const refParam = (what: string) =>
   z.string().describe(`${what}: an outline reference like §2.1 / §2.1#3 / §2.1#3:L10-14, an id, or a sourcebook:// URI (see get_outline).`);
 
-export interface AgentInput {
-  id: string;
-  name: string;
-}
-
-/**
- * Identity of the agent acting in a call, for when several assistants work on the same project: each one signs
- * its comments and notifications with its own id and name. Optional: the connection's agent is the default.
- */
-export const agentParam = z
-  .object({
-    id: z.string().min(1).max(39).describe('Stable handle of the agent, e.g. "reviewer" or "claude-writer" (lower-case letters, digits, ".", "-", "_")'),
-    name: z.string().trim().min(1).max(100).describe('Display name, e.g. "Reviewer (Claude)"'),
-  })
-  .optional()
-  .describe("Who is acting, when several agents work on the project: signs comments/notifications with this identity. Omit to use this connection's agent (see whoami).");
-
-/** Author from an agent identity; the id becomes the username ("Claude Writer" → "claude-writer"). */
-export function agentAuthor(agent: AgentInput): Author {
-  const username = agent.id
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9._-]/g, "")
-    .replace(/^[._-]+/, "")
-    .slice(0, 39);
-  if (!UsernameSchema.safeParse(username).success) throw new RefError(`Invalid agent id "${agent.id}": use lower-case letters, digits, ".", "-" or "_".`);
-  return { name: agent.name.trim(), username, kind: "assistant" };
-}
+/** "Writer agent (@writer, agent of Mario Rossi)" / "Mario Rossi (@mario)". */
+export const signature = (a: Author) => `${a.name} (@${a.username}${a.onBehalfOf ? `, agent of ${a.onBehalfOf.name}` : ""})`;
 
 export function errorText(e: unknown): string {
   if (e instanceof ApiError) {

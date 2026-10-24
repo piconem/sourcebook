@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "start": "tsx src/index.ts",
+    "reset-owner-password": "tsx src/resetOwnerPassword.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.2",

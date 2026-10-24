@@ -1,6 +1,7 @@
 import {
   choiceType,
   codeType,
+  csvType,
   createRegistry,
   drawingType,
   equationType,
@@ -14,6 +15,7 @@ import {
 } from "@sourcebook/shared";
 import { lazy } from "react";
 import { ChoiceEditor } from "./choice/ChoiceEditor";
+import { CsvEditor } from "./csv/CsvEditor";
 import { CodeEditor } from "./code/CodeEditor";
 import { exportDrawing } from "./drawing/export";
 import { EquationEditor } from "./equation/EquationEditor";
@@ -55,4 +57,5 @@ export const registry = createRegistry<ClientSubBlockType>([
   { ...codeType, icon: "</>", component: CodeEditor },
   { ...questionType, icon: "?", component: QuestionEditor },
   { ...choiceType, icon: "☑", component: ChoiceEditor },
+  { ...csvType, icon: "▦", component: CsvEditor },
 ]);

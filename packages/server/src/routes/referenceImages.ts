@@ -62,7 +62,7 @@ export const referenceImageRoutes =
         const path = await req.nb.store.saveAsset(req.params.id, img.ext, img.data);
         if (req.body.attachTo) await req.nb.store.attachReferences(req.params.id, req.body.attachTo, [img.path]);
         reply.code(201);
-        return { path, url: `/api/${req.nb.kind}/${req.nb.id}/blocks/${req.params.id}/files/${path}`, alt: img.alt, caption: img.caption };
+        return { path, url: `${req.server.basePath}/api/${req.nb.kind}/${req.nb.id}/blocks/${req.params.id}/files/${path}`, alt: img.alt, caption: img.caption };
       },
     );
 

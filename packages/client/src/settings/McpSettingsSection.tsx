@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { api } from "../api/client";
 import { CopyField } from "../components/CopyField";
 import { claudeCodeHttp, claudeCodeStdio, desktopJsonStdio, jsonHttp } from "./mcpSnippets";
+import { useIsOwner } from "../auth/AuthContext";
 
 export const mcpSettingsKey = ["settings", "mcp"] as const;
 
@@ -26,6 +27,7 @@ export function McpSettingsSection() {
   const { data, error } = useQuery({ queryKey: mcpSettingsKey, queryFn: api.getMcpSettings });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const owner = useIsOwner();
 
   const update = async (body: UpdateMcpSettingsBody) => {
     setSaving(true);
@@ -46,22 +48,24 @@ export function McpSettingsSection() {
     <div className="mcp-settings">
       <p className="muted small">
         The MCP server lets an AI assistant (Claude Code, Claude Desktop, other MCP clients) read and edit your projects and templates
-        with you. Changes apply immediately; the Sourcebook server must be running.
+        with you. One configuration serves all your agents: it carries your access token (Settings → My agents, where the
+        commands are ready with it); each agent then names itself in its calls.
+        {!owner && " Only the owner of this Sourcebook can change these settings."}
       </p>
 
       <section className="mcp-mode">
         <Toggle
           checked={data.http.enabled}
-          disabled={saving}
+          disabled={saving || !owner}
           onChange={(v) => update({ http: { enabled: v } })}
           label="HTTP"
-          description="Built into the Sourcebook server; the client connects to a URL (local requests only)."
+          description="Built into the Sourcebook server; the client connects to a URL with the agent's token."
         />
         {data.http.enabled ? (
           <div className="mcp-params">
             <CopyField label="Server URL" value={http.url} />
-            <CopyField label="Claude Code" value={claudeCodeHttp(http.url)} />
-            <CopyField label="Other clients (JSON)" value={jsonHttp(http.url)} multiline />
+            <CopyField label="Claude Code" value={claudeCodeHttp(http)} />
+            <CopyField label="Other clients (JSON)" value={jsonHttp(http)} multiline />
           </div>
         ) : (
           <p className="muted small mcp-off">Disabled: requests to {http.url} are refused.</p>
@@ -71,7 +75,7 @@ export function McpSettingsSection() {
       <section className="mcp-mode">
         <Toggle
           checked={data.stdio.enabled}
-          disabled={saving}
+          disabled={saving || !owner}
           onChange={(v) => update({ stdio: { enabled: v } })}
           label="stdio"
           description="The client starts a local process that talks to Sourcebook."
@@ -95,7 +99,7 @@ export function McpSettingsSection() {
       <section className="mcp-mode">
         <Toggle
           checked={data.readOnly}
-          disabled={saving}
+          disabled={saving || !owner}
           onChange={(v) => update({ readOnly: v })}
           label="Read-only access"
           description="The assistant can read everything but cannot create, change or delete anything (including comments)."

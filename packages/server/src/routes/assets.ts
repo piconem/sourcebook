@@ -29,7 +29,7 @@ export const assetRoutes =
         if (!ALLOWED.has(ext)) throw badRequest(`Unsupported file type ".${ext}"`);
         const path = await req.nb.store.saveAsset(req.query.blockId, ext, await file.toBuffer());
         reply.code(201);
-        return { path, url: `/api/${req.nb.kind}/${req.nb.id}/blocks/${req.query.blockId}/files/${path}` };
+        return { path, url: `${req.server.basePath}/api/${req.nb.kind}/${req.nb.id}/blocks/${req.query.blockId}/files/${path}` };
       },
     );
   };

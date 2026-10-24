@@ -7,6 +7,7 @@ import { ContextMenu } from "../components/ContextMenu";
 import { saveBlob } from "../download";
 import { navigate, routeHref } from "../router";
 import { ImportTemplateDialog } from "./ImportTemplateDialog";
+import { useAuth } from "../auth/AuthContext";
 import { DeleteNotebookDialog, kindLabel, NotebookFormDialog, notebooksKey, type NotebookForm } from "./NotebookDialogs";
 
 type SortKey = "name" | "sections" | "updatedAt" | "createdAt";
@@ -24,6 +25,10 @@ export function NotebookList({ kind }: { kind: NotebookKind }) {
   const [notice, setNotice] = useState<{ text: string; open?: ProjectSummary; error?: boolean } | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
+  // Permissions (all granted without a sign-in gate: single-user rendering).
+  const auth = useAuth();
+  const canCreate = !auth || auth.me.user.canCreateProjects;
+  const isOwner = !auth || auth.me.user.role === "owner";
 
   const exportTemplate = async (t: ProjectSummary) => {
     setMenu(null);
@@ -97,7 +102,7 @@ export function NotebookList({ kind }: { kind: NotebookKind }) {
       <header className="notebook-list-head">
         <h1>{kindLabel(kind, true)}</h1>
         <input className="ref-search" type="search" placeholder={`Search ${kindLabel(kind, true).toLowerCase()}…`} value={query} onChange={(e) => setQuery(e.target.value)} />
-        {kind === "templates" && (
+        {kind === "templates" && canCreate && (
           <>
             <button onClick={() => importInput.current?.click()} title="Import a template exported as ZIP">
               ⤒ Import template
@@ -114,9 +119,11 @@ export function NotebookList({ kind }: { kind: NotebookKind }) {
             />
           </>
         )}
-        <button className="primary" onClick={() => create(kind)}>
-          ＋ New {noun}
-        </button>
+        {canCreate && (
+          <button className="primary" onClick={() => create(kind)}>
+            ＋ New {noun}
+          </button>
+        )}
       </header>
       {kind === "templates" && (
         <p className="muted small notebook-list-intro">
@@ -139,8 +146,8 @@ export function NotebookList({ kind }: { kind: NotebookKind }) {
       {data && items.length === 0 && (
         <div className="ref-empty-state">
           <div className="ref-empty-icon" aria-hidden="true">{query ? "🔍" : kind === "projects" ? "📘" : "🧩"}</div>
-          <p>{query ? "Nothing matches your search." : `No ${noun}s yet.`}</p>
-          {!query && (
+          <p>{query ? "Nothing matches your search." : canCreate ? `No ${noun}s yet.` : `No ${noun}s shared with you yet: ask the owner of this Sourcebook for access.`}</p>
+          {!query && canCreate && (
             <button className="primary" onClick={() => create(kind)}>
               Create your first {noun}
             </button>
@@ -191,16 +198,16 @@ export function NotebookList({ kind }: { kind: NotebookKind }) {
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
           <button onClick={() => navigate({ page: "editor", kind: menu.item.kind, id: menu.item.id })}>Open</button>
-          <button
+          {menu.item.access !== "read" && <button
             onClick={() => {
               setMenu(null);
               setForm({ mode: "edit", kind: menu.item.kind, target: menu.item, initial: { name: menu.item.name, description: menu.item.description, from: "" } });
             }}
           >
             Rename / edit…
-          </button>
-          <button onClick={() => (setMenu(null), create(kind, `${menu.item.kind}/${menu.item.id}`, `${menu.item.name} (copy)`))}>Duplicate…</button>
-          {kind === "projects" ? (
+          </button>}
+          {canCreate && <button onClick={() => (setMenu(null), create(kind, `${menu.item.kind}/${menu.item.id}`, `${menu.item.name} (copy)`))}>Duplicate…</button>}
+          {!canCreate ? null : kind === "projects" ? (
             <button onClick={() => (setMenu(null), create("templates", `projects/${menu.item.id}`, `${menu.item.name} template`))}>Save as template…</button>
           ) : (
             <>
@@ -208,10 +215,14 @@ export function NotebookList({ kind }: { kind: NotebookKind }) {
               <button onClick={() => exportTemplate(menu.item)}>Export as ZIP</button>
             </>
           )}
-          <hr />
-          <button className="danger" onClick={() => (setMenu(null), setDeleting(menu.item))}>
-            Delete…
-          </button>
+          {isOwner && (
+            <>
+              <hr />
+              <button className="danger" onClick={() => (setMenu(null), setDeleting(menu.item))}>
+                Delete…
+              </button>
+            </>
+          )}
         </ContextMenu>
       )}
 

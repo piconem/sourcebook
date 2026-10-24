@@ -7,7 +7,7 @@ import { DESTRUCTIVE, WRITE, projectParam, refParam, run, type ToolContext } fro
 const typeParam = z
   .enum(TEXT_TYPES)
   .describe(
-    'Sub-block type: markdown (rich text), code (with language), mermaid (diagram source), equation (LaTeX), question (JSON {"question","answer"}), choice (multiple choice, JSON {"question","mode":"single"|"multiple","options":[{"id","text"}],"selected":[ids],"note"})',
+    'Sub-block type: markdown (rich text), code (with language), mermaid (diagram source), equation (LaTeX), question (JSON {"question","answer"}), choice (multiple choice, JSON {"question","mode":"single"|"multiple","options":[{"id","text"}],"selected":[ids],"note"}), csv (a data set as CSV text: first line = header; one record per line, so line numbers = rows + 1)',
   );
 const positionParam = (what: string) => z.number().int().min(1).optional().describe(`1-based position among the ${what}; omit to append at the end`);
 
@@ -162,12 +162,12 @@ export function registerWriteTools({ server, api, open }: ToolContext) {
     {
       title: "Add a sub-block",
       description:
-        "Adds a content sub-block to a section: markdown, code (set language), mermaid, equation (LaTeX), question (question + answer) or choice (multiple choice). Question and choice content is JSON (see type). Optional title and objective.",
+        "Adds a content sub-block to a section: markdown, code (set language), mermaid, equation (LaTeX), question (question + answer), choice (multiple choice) or csv (a data set). Question and choice content is JSON, csv content is CSV text (see type). Optional title and objective.",
       inputSchema: {
         project: projectParam,
         section: refParam("Target section"),
         type: typeParam,
-        content: z.string().describe("Source text: Markdown, code, Mermaid diagram, LaTeX, or JSON for question/choice"),
+        content: z.string().describe("Source text: Markdown, code, Mermaid diagram, LaTeX, JSON for question/choice, CSV for csv"),
         language: z.string().optional().describe('For code: language id, e.g. "python", "typescript", "sql"'),
         title: z.string().max(200).optional(),
         objective: z.string().max(20000).optional(),

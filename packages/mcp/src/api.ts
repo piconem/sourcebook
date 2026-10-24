@@ -1,3 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { AGENT_HEADER } from "@sourcebook/shared";
+
+/** The agent named by the tool call being run (sent as a header: the server signs with it). */
+export const agentContext = new AsyncLocalStorage<string | undefined>();
+
 /** How the MCP tools reach Sourcebook: its REST API, over HTTP (stdio server) or in-process (/mcp endpoint). */
 export interface SourcebookApi {
   /** JSON request; resolves with the parsed body (undefined for 204), rejects with ApiError. */
@@ -21,8 +27,19 @@ export class ApiError extends Error {
 /** Identifies MCP changes in live events (the web editor shows "changed by the assistant"). */
 export const CLIENT_HEADER = { "x-sourcebook-client": "mcp" };
 export type McpTransport = "stdio" | "http";
-/** Tells the server which transport is used, so it can apply the MCP settings (enabled, read-only). */
-const headersFor = (transport: McpTransport) => ({ ...CLIENT_HEADER, "x-sourcebook-mcp-transport": transport });
+/**
+ * Tells the server which transport is used, so it can apply the MCP settings (enabled, read-only), and who the
+ * agent is (its token).
+ */
+const headersFor = (transport: McpTransport, token?: string): Record<string, string> => {
+  const agent = agentContext.getStore();
+  return {
+    ...CLIENT_HEADER,
+    "x-sourcebook-mcp-transport": transport,
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...(agent ? { [AGENT_HEADER]: agent } : {}),
+  };
+};
 
 const errorFrom = (status: number, raw: string) => {
   try {
@@ -33,15 +50,15 @@ const errorFrom = (status: number, raw: string) => {
   }
 };
 
-/** REST API over HTTP (e.g. http://127.0.0.1:4000). */
-export function httpApi(baseUrl: string, fetchImpl: typeof fetch = fetch, transport: McpTransport = "stdio"): SourcebookApi {
+/** REST API over HTTP (e.g. http://127.0.0.1:4000, or with a base path: https://example.org/marco/sourcebook). */
+export function httpApi(baseUrl: string, fetchImpl: typeof fetch = fetch, transport: McpTransport = "stdio", token?: string): SourcebookApi {
   const base = baseUrl.replace(/\/+$/, "");
   const call = async (method: string, path: string, body?: unknown) => {
     let res: Response;
     try {
       res = await fetchImpl(base + path, {
         method,
-        headers: { ...headersFor(transport), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+        headers: { ...headersFor(transport, token), ...(body === undefined ? {} : { "content-type": "application/json" }) },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
@@ -80,13 +97,14 @@ export interface Injectable {
   }): Promise<{ statusCode: number; body: string; rawPayload?: Buffer; headers: Record<string, unknown> }>;
 }
 
-export function injectApi(app: Injectable, transport: McpTransport = "http"): SourcebookApi {
+/** In-process REST API; `prefix` is the server's base path, `token` the agent's (requests act as that agent). */
+export function injectApi(app: Injectable, transport: McpTransport = "http", opts: { prefix?: string; token?: string } = {}): SourcebookApi {
   const call = (method: string, url: string, body?: unknown) =>
     app.inject({
       method,
-      url,
+      url: (opts.prefix ?? "") + url,
       payload: body === undefined ? undefined : JSON.stringify(body),
-      headers: { ...headersFor(transport), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+      headers: { ...headersFor(transport, opts.token), ...(body === undefined ? {} : { "content-type": "application/json" }) },
     });
   return {
     async json(method, path, body) {

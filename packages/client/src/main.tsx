@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { AuthGate } from "./auth/AuthContext";
 import "./styles.css";
 import { applyAppearance, loadPrefs, resolveAppearance } from "./theme/appearance";
 import { AppearanceProvider } from "./theme/AppearanceContext";
@@ -15,7 +16,9 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AppearanceProvider>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <AuthGate>
+          <App />
+        </AuthGate>
       </QueryClientProvider>
     </AppearanceProvider>
   </StrictMode>,

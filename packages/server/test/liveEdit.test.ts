@@ -93,7 +93,7 @@ describe("live events", () => {
 
   it("streams changes with the origin of the client that made them", async () => {
     const workspace = await tempProject();
-    const { app } = await buildApp(workspace, { configDir: await tempProject() });
+    const { app } = await buildApp(workspace, { auth: false, configDir: await tempProject() });
     await app.inject({ method: "POST", url: "/api/projects", payload: { name: "Live" } });
     const address = await app.listen({ port: 0, host: "127.0.0.1" });
     close = () => app.close();

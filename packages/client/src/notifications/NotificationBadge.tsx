@@ -26,7 +26,7 @@ export function NotificationBadge({ blockId, subBlockId }: { blockId: string; su
     <button
       className="notif-badge"
       title={`Changed — ${hits.length} unread notification${hits.length === 1 ? "" : "s"} about ${what}:\n${hits
-        .map(({ n, note }) => `• ${n.author.name}: ${n.summary}${note ? ` — ${note}` : ""}`)
+        .map(({ n, note }) => `• ${n.author.name}${n.author.onBehalfOf ? ` (for ${n.author.onBehalfOf.name})` : ""}: ${n.summary}${note ? ` — ${note}` : ""}`)
         .join("\n")}\nClick to mark as read`}
       aria-label={`${hits.length} unread notification${hits.length === 1 ? "" : "s"} about ${what} — mark as read`}
       onClick={() => void markRead()}

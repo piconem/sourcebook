@@ -13,12 +13,63 @@ It never executes code: it edits content and persists it as plain Markdown/sourc
 ```bash
 pnpm install
 pnpm dev          # server on :4000 (workspace ~/Sourcebook) + Vite client on http://localhost:5173
+pnpm start        # builds the client, then serves everything from the server (http://127.0.0.1:4000/)
 pnpm test         # vitest in all packages
 pnpm typecheck
 ```
-The workspace folder holds all projects and templates. Default `~/Sourcebook`; override with
-`--workspace /path` (e.g. `pnpm --filter @sourcebook/server exec tsx src/index.ts --workspace /path`) or
-`SOURCEBOOK_WORKSPACE`. Missing folders are created automatically.
+The workspace folder holds all projects and templates, plus `.sourcebook/` with accounts and settings. Missing
+folders are created automatically, and the **Sourcebook Demo** template is added at the first start (see
+[Example templates](#example-templates)).
+
+**Configuration** (command-line option, else environment variable, else default):
+
+| Option / variable | Default | |
+|---|---|---|
+| `--workspace` / `SOURCEBOOK_WORKSPACE` | `~/Sourcebook` | where Sourcebook works: projects, templates, `.sourcebook/` |
+| `--host` / `SOURCEBOOK_HOST` | `127.0.0.1` | interface to listen on (`0.0.0.0` to accept other machines, e.g. in a container) |
+| `--port` / `PORT` | `4000` | port |
+| `--base-path` / `SOURCEBOOK_BASE_PATH` | `/` | URL prefix, e.g. `/marco/sourcebook` for `https://mydomain.it/marco/sourcebook/` behind a reverse proxy |
+| `--public-url` / `SOURCEBOOK_PUBLIC_URL` | `http://127.0.0.1:<port><base>` | address users reach (shown in MCP connection hints; `https` makes the session cookie `Secure`) |
+| `SOURCEBOOK_ADMIN_PASSWORD` | generated | password of the owner account created at the first start |
+| `SOURCEBOOK_TRUST_PROXY=1` | off | behind a reverse proxy: trust `X-Forwarded-*` (client IP for sign-in throttling) |
+
+One client build works under any base path (relative asset URLs; the server tells the page its prefix). In development
+`SOURCEBOOK_BASE_PATH` is read by Vite as well. Several Sourcebooks can share a domain under different prefixes: each
+has its own session cookie.
+
+## Accounts, access and agents
+- **First start**: an **owner** account is created — `admin`, or the profile of an older single-user Sourcebook. Its
+  password is `SOURCEBOOK_ADMIN_PASSWORD`, or a generated one printed **once** in the server log; it must be changed at
+  the first sign-in. Forgot it? `pnpm --filter @sourcebook/server reset-owner-password [--workspace dir]` prints a new
+  temporary one (then restart the server).
+- **Users**: the owner adds them (Settings → Users) with a temporary password they change at the first sign-in, and
+  can disable, reset, delete them or make them owners. Only owners create projects and templates, unless a user is
+  given **may create projects** (the creator gets write access to what they create). Only owners delete.
+- **Access** (Settings → Project access): per project / template and user, **read** (read and comment) or **write**
+  (also edit). Projects without access are invisible. Owners open everything.
+- **Agents** (Settings → My agents): each user creates an **access token** (shown once) and configures the MCP server
+  with it **once**; all their agents share that configuration. Agents are **identities** registered by the user (or by
+  the assistant itself with `register_agent`): every tool takes `agent: "<id>"` to say which one acts, otherwise the
+  user's default agent does. An agent has its user's rights and signs as "Reviewer · for Mario Rossi". Only the
+  user's own agents can be named; revoking the token, an agent or the user stops them at once. **Revoke** stops an
+  agent and keeps its history; **Delete** removes it for good with everything it wrote in every project — threads
+  (with their replies), replies, resolutions (threads reopen), notifications, locks, picture — after showing what
+  will go and asking to type its id; its id becomes free again. Scripts may use the
+  token too (header `x-sourcebook-agent: <id>` to act as an agent, otherwise as the user).
+- **Pictures**: each user can set a picture for themselves (Settings → Account) and for each of their agents (My
+  agents); the owner can change anyone's. The image is cropped square in the browser (drag and zoom), stored as a
+  256×256 WebP and shown in a circle wherever the person or agent appears (comments, notifications, menus); without
+  one, the initials.
+- **Locks**: a sub-block can be taken (🔒 in its header, or `lock_subblock` for agents): until its holder releases it,
+  nobody else can change or delete it (nor delete its section); comments stay open. No expiry: the holder releases it,
+  the user an agent works for may release the agent's locks, the owner can release any (in the editor or Settings →
+  Locks).
+- **Where it is stored**: `<workspace>/.sourcebook/` (folder `0700`, files `0600`, with a `.gitignore` excluding all):
+  `accounts.json` (scrypt password hashes), `tokens.json` (SHA-256 of access tokens), `agents.json`, `access.json`,
+  `sessions.json` (hashes of session tokens; 30 days, renewed with use), `settings.json` and `avatars/`. Passwords and tokens are never stored. Mount or back
+  up the workspace and everything comes along.
+- Web sessions are `HttpOnly`, `SameSite=Strict` cookies scoped to the base path; changes must carry the
+  `x-sourcebook-client` header (sent by the web client), and repeated wrong passwords are throttled.
 
 **Version**: name, version and release date live in `packages/shared/src/version.ts` (shown in the user menu → About
 and reported by the MCP server); keep `version` in the `package.json` files in sync when releasing.
@@ -75,8 +126,25 @@ packages/mcp      MCP server for LLM assistants (tools, resources, prompts; stdi
 | GET / PATCH / DELETE | `/api/{projects,templates}/:projectId` | summary · `{ name?, description? }` · delete the folder |
 | GET | `/api/templates/:projectId/archive.zip` | template as ZIP: `sourcebook-template.json` manifest + the template folder (comments excluded) |
 | POST | `/api/templates/import?dryRun=1&name=…` | multipart `file` (ZIP). Validated completely first: 400 `{ error, details: { errors[], warnings[] } }` if invalid; `dryRun` returns a preview `{ name, sections, subBlocks, references, warnings }` without importing |
-| GET / PUT | `/api/settings/mcp` | `{ http: { enabled }, stdio: { enabled }, readOnly }` + connection parameters (URL, stdio command/args/cwd/env) |
-| GET / PUT | `/api/user` | current user profile `{ name, username }` (stored in `~/.config/sourcebook/user.json`) |
+| GET / PUT | `/api/settings/mcp` | `{ http: { enabled }, stdio: { enabled }, readOnly }` + connection parameters (URL + `Authorization` header, stdio command/args/cwd/env with `SOURCEBOOK_TOKEN`); PUT: owner |
+| GET / PUT | `/api/user` | the signed-in user's profile `{ name, username }` (PUT changes the name; the username cannot change) |
+| POST | `/api/auth/login` · `/api/auth/logout` | `{ username, password }` → `{ user, author }` + session cookie · ends the session |
+| GET | `/api/auth/me` | `{ user, agent?, author }` of the session or agent token (401 otherwise) |
+| POST / PATCH | `/api/auth/password` · `/api/auth/profile` | `{ currentPassword, newPassword }` · `{ name }` |
+| GET / POST | `/api/users` | list · owner: `{ username, name, password (temporary), role?, canCreateProjects? }` |
+| PATCH / DELETE | `/api/users/:username` | owner: `{ name?, role?, canCreateProjects?, disabled?, password? (reset) }` · delete (their agents are revoked) |
+| GET · PUT | `/api/access` · `/api/access/:kind/:projectId` | owner: every project/template with `{ access: { username: "read"\|"write" } }` · `{ access: { username: level \| null } }` |
+| GET / POST / DELETE | `/api/tokens` · `/api/tokens/:id` | your access tokens (`?all=1` owner: everyone's) · `{ label }` → `{ token, info }` (token shown once; signed in only) · revoke |
+| GET / POST / DELETE | `/api/agents` · `/api/agents/:id` | your agents (`?all=1` owner) · `{ id, name }` → the agent (the first is the default) · revoke |
+| POST | `/api/agents/:id/default` | make it the agent acting when a call names none |
+| GET · POST | `/api/agents/:id/footprint` · `/api/agents/:id/delete` | what deleting it would remove, per project (nothing changes) · delete it for good with all it wrote → what was removed |
+| GET | `/api/avatars` · `/api/avatars/:id` | `{ avatars: { id: version } }` · the picture (WebP, 256×256) of a user or agent |
+| PUT / DELETE | `/api/avatars/:id` | `{ image: <data URL or base64> }` — cropped to the central square and scaled to 256 px · remove (your own, your agents', or anyone's for owners) |
+| GET | `/api/locks` | owner: locked sub-blocks of every project/template |
+
+Every `/api` call needs a session (web) or an access token (`Authorization: Bearer sbu_…`, plus `x-sourcebook-agent` to act
+as one of your agents); projects you cannot open
+answer 404, writes with read access 403. With a base path, everything (API, `/mcp`, the client) lives under it.
 | GET | `/api/types` | registered sub-block types |
 
 ### Inside a project or template
@@ -113,7 +181,9 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | POST | `…/notifications` | `{ summary, targets: [{ blockId, subBlockId?, commentId?, note? }], author?, requestReload? }` — notifies the user of a change (targets: sections, sub-blocks or comments; 400 if one does not exist); `requestReload: true` also asks open editors to reload |
 | POST | `…/notifications/:id/read` · `…/notifications/read-all` | mark as read → `{ notifications }` |
 | DELETE | `…/notifications` | clear the list |
-| GET | `…/participants` | `{ participants: [{ username, name, kind, local?, contributions, lastActive? }] }` — who signed comments, replies, resolutions and notifications, plus the local user. An explicit `author` given to comments / notifications / reload requests is refused (409) when its username is the local user's, is used with another name, or its name is used by another username |
+| GET | `…/participants` | `{ participants: [{ username, name, kind, onBehalfOf?, registered?, contributions, lastActive? }] }` — users who may open the project and their agents, plus whoever signed comments, replies, resolutions and notifications |
+| GET | `…/locks` | `{ locks: [{ blockId, subBlockId, holder, since }] }` |
+| POST / DELETE | `…/blocks/:blockId/subblocks/:subBlockId/lock` | take a sub-block (409 if someone else holds it) · release it (holder, the user of the holding agent, or the owner with `?force=1`). Changing or deleting a sub-block held by someone else: 423 |
 | POST | `…/reload-request` | `{ message?, notificationIds?, author? }` — asks open editors to reload, listing those notifications (default: the unread ones) |
 | GET | `…/references` | tree of `references/`; each file has `mcp: { status, kind, unit?, parts?, pageImages?, figures?, imageOnlyParts?, error? }` (see below) and documents still to convert are queued |
 | GET | `…/references/file/*` | a reference, inline (`?download=1` to download) |
@@ -162,10 +232,11 @@ shows the user a dialog with the message and those notifications, and offers to 
 saved first).
 
 ```bash
+# Scripts authenticate with an access token (Settings → My agents): TOKEN=sbu_…
 # Tell the user what changed, then ask open editors to reload
-curl -X POST localhost:4000/api/projects/checkout/notifications -H 'content-type: application/json' \
+curl -X POST localhost:4000/api/projects/checkout/notifications -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"summary": "Updated the API section", "targets": [{"blockId": "'$BLOCK'", "subBlockId": "'$SUB'", "note": "new endpoints"}]}'
-curl -X POST localhost:4000/api/projects/checkout/reload-request -H 'content-type: application/json' \
+curl -X POST localhost:4000/api/projects/checkout/reload-request -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"message": "Refactoring of §2 complete"}'
 ```
 
@@ -175,10 +246,10 @@ so links survive moving sections; the ↗ buttons of sections and sub-blocks cop
 
 ```bash
 # Create a project from a template, then comment lines 12-14 of one of its code sub-blocks
-curl -X POST localhost:4000/api/projects -H 'content-type: application/json' \
+curl -X POST localhost:4000/api/projects -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"name": "Checkout", "from": {"kind": "templates", "id": "software-project"}}'
 curl -X POST localhost:4000/api/projects/checkout/blocks/$BLOCK/subblocks/$SUB/comments \
-  -H 'content-type: application/json' \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"text": "Handle the timeout here", "anchor": {"lines": {"first": 12, "last": 14}}}'
 ```
 
@@ -187,39 +258,32 @@ curl -X POST localhost:4000/api/projects/checkout/blocks/$BLOCK/subblocks/$SUB/c
 projects and templates with you — sections, sub-blocks, lines, comments and references — through the same REST API
 (same validation; your open editor updates live). The Sourcebook server must be running (`pnpm dev`).
 
-Open **Settings (avatar) → AI assistant (MCP)** to enable or disable each transport, give the assistant read-only
-access, and copy the exact URL / command / JSON for your LLM client (computed for your machine). Settings are stored
-in `~/.config/sourcebook/settings.json` and enforced by the server: requests from a disabled transport, and MCP
-writes in read-only mode, are refused.
+**Connecting**: create an access token in **Settings → My agents** — Sourcebook shows it once, with ready-to-copy
+commands — and configure the MCP server **once**. Then register your agents' identities (same page, or let the
+assistant call `register_agent`): every tool takes `agent: "<id>"`, so several agents (a writer, a reviewer…) sharing
+the connection are told apart, each signed with its name and yours; without `agent`, your default agent acts.
+**Settings → AI assistant (MCP)** (owner) enables or disables each transport and can make every agent read-only; the
+server enforces it.
 
+**HTTP** (built into the Sourcebook server; local requests, or the host of `SOURCEBOOK_PUBLIC_URL`):
+```bash
+claude mcp add --transport http sourcebook http://127.0.0.1:4000/mcp --header "Authorization: Bearer sbu_…"
+```
+Or once per project, in a committed `.mcp.json` that reads the token from the environment (`SOURCEBOOK_TOKEN=sbu_… claude`):
+```json
+{ "mcpServers": { "sourcebook": { "type": "http", "url": "http://127.0.0.1:4000/mcp", "headers": { "Authorization": "Bearer ${SOURCEBOOK_TOKEN}" } } } }
+```
 **stdio** (the client starts the process):
 ```bash
-claude mcp add sourcebook -- pnpm --silent --dir "/path/to/sourcebook" --filter @sourcebook/mcp exec tsx src/stdio.ts
+claude mcp add -e SOURCEBOOK_TOKEN=sbu_… sourcebook -- pnpm --silent --dir "/path/to/sourcebook" --filter @sourcebook/mcp exec tsx src/stdio.ts
 ```
-**HTTP** (built into the Sourcebook server, local requests only):
-```bash
-claude mcp add --transport http sourcebook http://127.0.0.1:4000/mcp
-```
-Claude Desktop (`claude_desktop_config.json`):
-```json
-{ "mcpServers": { "sourcebook": { "command": "pnpm", "args": ["--silent", "--dir", "/path/to/sourcebook", "--filter", "@sourcebook/mcp", "exec", "tsx", "src/stdio.ts"] } } }
-```
-Environment: `SOURCEBOOK_URL` (stdio, default `http://127.0.0.1:4000`), `SOURCEBOOK_MCP_READONLY=1` (reading tools only),
-`SOURCEBOOK_MCP_AGENT_ID` / `SOURCEBOOK_MCP_AGENT_NAME` (identity of the agent signing comments and notifications,
-default `claude` / "Claude (assistant)"; the older `SOURCEBOOK_MCP_AUTHOR_USERNAME` / `_NAME` still work).
+Environment (stdio): `SOURCEBOOK_TOKEN` (your access token), `SOURCEBOOK_URL` (default `http://127.0.0.1:4000`, include
+the base path if any), `SOURCEBOOK_MCP_READONLY=1` (reading tools only).
 
-**Several agents on one project**: each agent signs its comments, replies, resolutions and notifications with its own
-id and name, so you can tell them apart. Either give each connection an identity — stdio: the environment variables
-above; HTTP: `http://127.0.0.1:4000/mcp?agent_id=reviewer&agent_name=Reviewer` (or the headers
-`x-sourcebook-agent-id` / `x-sourcebook-agent-name`) — or let agents sharing one connection pass
-`agent: {"id": "reviewer", "name": "Reviewer"}` to `add_comment`, `reply_to_comment`, `resolve_comment`,
-`notify_changes`, `request_reload` and `save_reference_transcription`. `whoami` tells an agent its current identity;
-`list_participants` lists who already signed in the project (people and agents, plus the local user). Identities that
-would be mistaken for someone else are refused (409): an id already used with another name, a name already used by
-another id, or the local user's username. The same id with the same name is the same agent continuing its work.
-```bash
-claude mcp add --transport http sourcebook-reviewer "http://127.0.0.1:4000/mcp?agent_id=reviewer&agent_name=Reviewer"
-```
+`whoami` tells an agent who it is, whom it works for and the other agents of its user; `list_participants` shows the
+people and agents of a project.
+Before a longer piece of work on a sub-block an agent takes it with `lock_subblock` and releases it with
+`unlock_subblock`; `list_locks` shows who holds what.
 
 **Ask AI**: the ✨💬 button on the document, sections, sub-blocks, selected text/code lines, comment threads and
 reference files prepares a ready-to-paste request (brainstorming, critique, build/fill, improve/rewrite, comment, or
@@ -259,7 +323,7 @@ ids and `sourcebook://projects/<id>/subblocks/<id>` URIs.
 **Tools**: `list_workspace`, `get_outline`, `read_section`, `read_subblock`, `read_document`, `search`, `list_references`,
 `read_reference` (text as it is, images as images, documents as converted Markdown, by `parts`), `read_reference_pages`
 (PDF pages as images), `read_reference_figures` (figures cut out of PDFs, with captions), `list_comments` (open threads;
-`include_resolved` for all), `list_notifications`, `whoami`, `list_participants` · `save_reference_transcription`, `move_references` (move files/folders between folders of
+`include_resolved` for all), `list_notifications`, `whoami`, `list_participants`, `list_locks` · `register_agent` · `lock_subblock`, `unlock_subblock` · `save_reference_transcription`, `move_references` (move files/folders between folders of
 References; links and associations follow) · `create_project`, `create_template`, `create_section`, `add_subblock`,
 `update_section`, `update_subblock`, `edit_subblock_text` (find/replace or line ranges, atomic), `move_section`,
 `move_subblock` · `add_image_from_reference` (an image file or a PDF figure as an image sub-block) · `add_comment`,
@@ -279,9 +343,25 @@ Examples: *"Show me the outline of the payment-service project"*, *"Rewrite §2.
 Question (`question`) and multiple-choice (`choice`) sub-blocks are read and written by the assistant as their JSON
 source (see On-disk format); a multiple-choice sub-block in `single` mode accepts at most one selected option.
 
+**CSV data** (`csv`) sub-blocks hold a reference data set to reason about (with you or the assistant): in the editor a
+table (sort by column, filter, edit cells and column names, add/remove rows and columns, 100 rows per page), a
+**Summary** per column (type, filled/empty, distinct values, min/max/mean, most frequent values) and the raw **CSV**;
+import a `.csv`/`.tsv` file from your computer or from References (the delimiter is detected), download it back.
+Comments attach to rows (💬 in the row gutter; select rows by their number, Shift+click for several). The assistant
+reads and edits the CSV text like any other: line 1 is the header, line N+1 is row N, so `§2#1:L5` is row 4. The
+combined Markdown shows the first 50 rows as a table.
+
 ## Example templates
-`python3 scripts/create-example-templates.py [--replace] [--only <id>…]` creates them through the REST API of a running
-server: **Software Project**, Scientific Paper, Research Project Proposal, Thesis.
+**Sourcebook Demo** ships with Sourcebook: the server adds it to the workspace at its first start (and to existing
+workspaces after an upgrade), once — if the owner deletes it, it does not come back (`.sourcebook/seeded.json`
+remembers it; remove the id from there to get it again). It is a tour to start a first project from: a sub-block of
+every type (Markdown, Mermaid, drawing, equation, code, image, CSV data, question, multiple choice), nested sections,
+objectives, a bibliography entry cited in the text, reference files linked and attached, and pages on comments,
+notifications, locks, permissions and connecting an AI assistant. Its content is in
+`packages/server/src/seed/demoTemplate.ts`.
+
+`python3 scripts/create-example-templates.py [--replace] [--only <id>…]` creates the other ones through the REST API
+of a running server: **Software Project**, Scientific Paper, Research Project Proposal, Thesis.
 
 **Software Project** is meant to be worked on alone or with an AI assistant. It starts with _Prompts_ (a ready-to-paste
 briefing for an AI assistant, in English and Italian: MCP tools / REST API, structure, behaviour) and _Instructions_ (conventions,

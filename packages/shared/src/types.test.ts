@@ -50,6 +50,6 @@ describe("core sub-block types", () => {
   it("rejects duplicate registration", () => {
     const r = createCoreRegistry();
     expect(() => r.register(coreTypes[0])).toThrow();
-    expect(r.list().map((t) => t.type)).toEqual(["markdown", "mermaid", "image", "drawing", "equation", "code", "question", "choice"]);
+    expect(r.list().map((t) => t.type)).toEqual(["markdown", "mermaid", "image", "drawing", "equation", "code", "question", "choice", "csv"]);
   });
 });

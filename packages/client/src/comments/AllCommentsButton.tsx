@@ -73,7 +73,10 @@ export function AllCommentsButton({ project, goTo }: { project: Project | undefi
                       >
                         <span className="allc-meta">
                           <Avatar name={c.author.name} username={c.author.username} size={20} />
-                          <span className="allc-who">{c.author.name}</span>
+                          <span className="allc-who">
+                            {c.author.name}
+                            {c.author.onBehalfOf && <span className="author-for"> · for {c.author.onBehalfOf.name}</span>}
+                          </span>
                           <span className="muted small">
                             {where} · {relativeTime(c.createdAt)}
                             {c.replies.length > 0 && ` · ${c.replies.length} repl${c.replies.length === 1 ? "y" : "ies"}`}

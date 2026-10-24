@@ -12,7 +12,7 @@ import { tempProject } from "./helpers.js";
 async function setup(port?: number) {
   const workspace = await tempProject();
   const configDir = await tempProject();
-  const { app } = await buildApp(workspace, { configDir, port });
+  const { app } = await buildApp(workspace, { auth: false, configDir, port });
   const call = async (method: string, url: string, payload?: object, headers?: Record<string, string>) => {
     const res = await app.inject({ method: method as "GET", url, payload: payload as Record<string, unknown>, headers });
     return { status: res.statusCode, body: res.json() };
@@ -28,12 +28,12 @@ describe("MCP settings", () => {
     const { call } = await setup();
     const s = (await call("GET", "/api/settings/mcp")).body;
     expect(s).toMatchObject({ http: { enabled: true }, stdio: { enabled: true }, readOnly: false });
-    expect(s.connection.http.url).toBe("http://127.0.0.1:4000/mcp");
+    expect(s.connection.http).toEqual({ url: "http://127.0.0.1:4000/mcp", headers: { Authorization: "Bearer <your access token>" } });
     expect(s.connection.stdio).toEqual({
       command: "pnpm",
       args: ["--silent", "--dir", REPO_ROOT, "--filter", "@sourcebook/mcp", "exec", "tsx", "src/stdio.ts"],
       cwd: REPO_ROOT,
-      env: {},
+      env: { SOURCEBOOK_TOKEN: "<your access token>" },
     });
     expect(REPO_ROOT.endsWith("sourcebook")).toBe(true);
   });
@@ -42,15 +42,15 @@ describe("MCP settings", () => {
     const { call } = await setup(4555);
     const s = (await call("GET", "/api/settings/mcp")).body;
     expect(s.connection.http.url).toBe("http://127.0.0.1:4555/mcp");
-    expect(s.connection.stdio.env).toEqual({ SOURCEBOOK_URL: "http://127.0.0.1:4555" });
+    expect(s.connection.stdio.env).toEqual({ SOURCEBOOK_URL: "http://127.0.0.1:4555", SOURCEBOOK_TOKEN: "<your access token>" });
   });
 
-  it("persists changes in settings.json (outside the workspace) and validates them", async () => {
+  it("persists changes in the workspace's .sourcebook/settings.json and validates them", async () => {
     const { call, configDir, workspace } = await setup();
     const updated = (await call("PUT", "/api/settings/mcp", { stdio: { enabled: false }, readOnly: true })).body;
     expect(updated).toMatchObject({ http: { enabled: true }, stdio: { enabled: false }, readOnly: true });
-    expect(JSON.parse(await readFile(join(configDir, "settings.json"), "utf8")).mcp).toEqual({ http: { enabled: true }, stdio: { enabled: false }, readOnly: true });
-    const { app: again } = await buildApp(workspace, { configDir });
+    expect(JSON.parse(await readFile(join(workspace, ".sourcebook", "settings.json"), "utf8")).mcp).toEqual({ http: { enabled: true }, stdio: { enabled: false }, readOnly: true });
+    const { app: again } = await buildApp(workspace, { auth: false, configDir });
     expect((await again.inject({ method: "GET", url: "/api/settings/mcp" })).json()).toMatchObject({ stdio: { enabled: false }, readOnly: true });
     expect((await call("PUT", "/api/settings/mcp", { http: { enabled: "no" } })).status).toBe(400);
   });

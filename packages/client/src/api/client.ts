@@ -37,15 +37,38 @@ import type {
   UpdateBlockBody,
   UpdateSubBlockBody,
   UploadAssetResponse,
+  AccountView,
+  AccessLevel,
+  AgentView,
+  AccessTokenView,
+  AgentFootprint,
+  CreateUserBody,
+  Me,
+  ProjectAccess,
+  SubBlockLock,
+  UpdateUserBody,
 } from "@sourcebook/shared";
 
 /**
- * Base URL of the project/template being edited (`/api/projects/<id>` or `/api/templates/<id>`);
+ * URL prefix of this Sourcebook ("" at the root, e.g. "/marco/sourcebook"): injected by the server into
+ * index.html, or the Vite base path in development.
+ */
+export const BASE_PATH: string = (() => {
+  const injected = (globalThis as { __SOURCEBOOK__?: { basePath?: string } }).__SOURCEBOOK__?.basePath;
+  if (typeof injected === "string") return injected;
+  const vite = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
+  return vite.startsWith("/") ? vite.replace(/\/+$/, "") : "";
+})();
+/** Root of the REST API. */
+export const API = `${BASE_PATH}/api`;
+
+/**
+ * Base URL of the project/template being edited (`${API}/projects/<id>` or `${API}/templates/<id>`);
  * every notebook call goes through it. Set when a project or template is opened.
  */
-let nbBase = "/api/projects/_";
+let nbBase = `${API}/projects/_`;
 export function setNotebookBase(kind: NotebookKind, id: string) {
-  nbBase = `/api/${kind}/${encodeURIComponent(id)}`;
+  nbBase = `${API}/${kind}/${encodeURIComponent(id)}`;
 }
 export const notebookBase = () => nbBase;
 
@@ -58,7 +81,7 @@ export function apiFetch(url: string, init: RequestInit = {}) {
 }
 
 /** sourcebook:// URI of an element of the open project/template, e.g. sections/<id>. */
-export const notebookUri = (path: string) => `sourcebook:/${nbBase.replace(/^\/api/, "")}/${path}`;
+export const notebookUri = (path: string) => `sourcebook:/${nbBase.slice(API.length)}/${path}`;
 
 const commentsUrl = (blockId: string, subBlockId: string) => `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}/comments`;
 
@@ -90,10 +113,17 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
+    // Session ended (signed out elsewhere, disabled, password reset) or a password change is due: back to sign-in.
+    if ((res.status === 401 && !url.endsWith("/auth/login")) || err.details?.code === "password_change_required") {
+      globalThis.dispatchEvent?.(new Event(AUTH_CHANGED));
+    }
     throw new ApiError(res.status, err.error ?? res.statusText, err.details);
   }
   return res.status === 204 ? (undefined as T) : res.json();
 }
+
+/** Dispatched on window when the session is gone or needs attention (the sign-in gate re-checks it). */
+export const AUTH_CHANGED = "sourcebook:auth-changed";
 
 export const api = {
   getProject: () => request<Project>("GET", `${nbBase}/notebook`),
@@ -126,16 +156,16 @@ export const api = {
     request<void>("DELETE", `${nbBase}/blocks/${blockId}/assets/${encodeURIComponent(assetPath.replace(/^assets\//, ""))}`),
 
   // ---- workspace: projects & templates ----
-  listNotebooks: (kind: NotebookKind) => request<ProjectSummary[]>("GET", `/api/${kind}`),
-  getNotebookSummary: (kind: NotebookKind, id: string) => request<ProjectSummary>("GET", `/api/${kind}/${encodeURIComponent(id)}`),
-  createNotebook: (kind: NotebookKind, body: CreateProjectBody) => request<ProjectSummary>("POST", `/api/${kind}`, body),
+  listNotebooks: (kind: NotebookKind) => request<ProjectSummary[]>("GET", `${API}/${kind}`),
+  getNotebookSummary: (kind: NotebookKind, id: string) => request<ProjectSummary>("GET", `${API}/${kind}/${encodeURIComponent(id)}`),
+  createNotebook: (kind: NotebookKind, body: CreateProjectBody) => request<ProjectSummary>("POST", `${API}/${kind}`, body),
   updateNotebook: (kind: NotebookKind, id: string, body: UpdateProjectBody) =>
-    request<ProjectSummary>("PATCH", `/api/${kind}/${encodeURIComponent(id)}`, body),
-  deleteNotebook: (kind: NotebookKind, id: string) => request<void>("DELETE", `/api/${kind}/${encodeURIComponent(id)}`),
+    request<ProjectSummary>("PATCH", `${API}/${kind}/${encodeURIComponent(id)}`, body),
+  deleteNotebook: (kind: NotebookKind, id: string) => request<void>("DELETE", `${API}/${kind}/${encodeURIComponent(id)}`),
 
   /** Template as a ZIP archive (manifest + folder, comments excluded). */
   async exportTemplate(id: string): Promise<{ blob: Blob; name: string }> {
-    const res = await apiFetch(`/api/templates/${encodeURIComponent(id)}/archive.zip`);
+    const res = await apiFetch(`${API}/templates/${encodeURIComponent(id)}/archive.zip`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
       throw new ApiError(res.status, err.error ?? res.statusText);
@@ -155,19 +185,19 @@ export const api = {
     form.append("file", file, file.name);
     const q = new URLSearchParams(opts.dryRun ? { dryRun: "1" } : {});
     if (opts.name) q.set("name", opts.name);
-    const res = await apiFetch(`/api/templates/import?${q}`, { method: "POST", body: form });
+    const res = await apiFetch(`${API}/templates/import?${q}`, { method: "POST", body: form });
     const body = await res.json().catch(() => ({ error: res.statusText }));
     if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText, body.details);
     return body;
   },
 
   // ---- settings ----
-  getMcpSettings: () => request<McpSettingsView>("GET", "/api/settings/mcp"),
-  updateMcpSettings: (body: UpdateMcpSettingsBody) => request<McpSettingsView>("PUT", "/api/settings/mcp", body),
+  getMcpSettings: () => request<McpSettingsView>("GET", `${API}/settings/mcp`),
+  updateMcpSettings: (body: UpdateMcpSettingsBody) => request<McpSettingsView>("PUT", `${API}/settings/mcp`, body),
 
   // ---- user & comments ----
-  getUser: () => request<UserProfile>("GET", "/api/user"),
-  setUser: (profile: UserProfile) => request<UserProfile>("PUT", "/api/user", profile),
+  getUser: () => request<UserProfile>("GET", `${API}/user`),
+  setUser: (profile: UserProfile) => request<UserProfile>("PUT", `${API}/user`, profile),
   getComments: (blockId: string, subBlockId: string) =>
     request<{ comments: Comment[] }>("GET", commentsUrl(blockId, subBlockId)).then((r) => r.comments),
   addComment: (blockId: string, subBlockId: string, text: string, anchor?: CommentAnchor | null) =>
@@ -183,6 +213,46 @@ export const api = {
     request<Comment>("POST", `${commentsUrl(blockId, subBlockId)}/${commentId}/${resolved ? "resolve" : "reopen"}`, resolved ? {} : undefined),
   /** Every comment thread of the project, in document order. */
   getProjectComments: () => request<{ threads: ProjectCommentThread[] }>("GET", `${nbBase}/comments`).then((r) => r.threads),
+
+  // ---- sign-in, accounts, access, agents ----
+  me: () => request<Me>("GET", `${API}/auth/me`),
+  login: (username: string, password: string) => request<Me>("POST", `${API}/auth/login`, { username, password }),
+  logout: () => request<void>("POST", `${API}/auth/logout`),
+  changePassword: (currentPassword: string, newPassword: string) => request<Me>("POST", `${API}/auth/password`, { currentPassword, newPassword }),
+  updateProfile: (name: string) => request<Me>("PATCH", `${API}/auth/profile`, { name }),
+  listUsers: () => request<{ users: AccountView[] }>("GET", `${API}/users`).then((r) => r.users),
+  createUser: (body: CreateUserBody) => request<AccountView>("POST", `${API}/users`, body),
+  updateUser: (username: string, body: UpdateUserBody) => request<AccountView>("PATCH", `${API}/users/${encodeURIComponent(username)}`, body),
+  deleteUser: (username: string) => request<void>("DELETE", `${API}/users/${encodeURIComponent(username)}`),
+  listAccess: () => request<{ projects: ProjectAccess[] }>("GET", `${API}/access`).then((r) => r.projects),
+  setAccess: (kind: NotebookKind, id: string, access: Record<string, AccessLevel | null>) =>
+    request<{ access: Record<string, AccessLevel> }>("PUT", `${API}/access/${kind}/${encodeURIComponent(id)}`, { access }),
+  listAgents: (all = false) => request<{ agents: AgentView[] }>("GET", `${API}/agents${all ? "?all=1" : ""}`).then((r) => r.agents),
+  createAgent: (id: string, name: string) => request<AgentView>("POST", `${API}/agents`, { id, name }),
+  /** What deleting an agent would remove (nothing changes). */
+  agentFootprint: (id: string) => request<AgentFootprint>("GET", `${API}/agents/${encodeURIComponent(id)}/footprint`),
+  /** Deletes an agent for good, with its comments, notifications, locks and picture; returns what was removed. */
+  deleteAgent: (id: string) => request<AgentFootprint>("POST", `${API}/agents/${encodeURIComponent(id)}/delete`),
+  setDefaultAgent: (id: string) => request<AgentView>("POST", `${API}/agents/${encodeURIComponent(id)}/default`),
+  revokeAgent: (id: string) => request<AgentView>("DELETE", `${API}/agents/${encodeURIComponent(id)}`),
+  getAvatars: () => request<{ avatars: Record<string, number> }>("GET", `${API}/avatars`).then((r) => r.avatars),
+  /** Uploads a picture (data URL); the server crops it square and scales it to 256 px. */
+  setAvatar: (id: string, image: string) =>
+    request<{ avatars: Record<string, number> }>("PUT", `${API}/avatars/${encodeURIComponent(id)}`, { image }).then((r) => r.avatars),
+  deleteAvatar: (id: string) => request<{ avatars: Record<string, number> }>("DELETE", `${API}/avatars/${encodeURIComponent(id)}`).then((r) => r.avatars),
+  listTokens: (all = false) => request<{ tokens: AccessTokenView[] }>("GET", `${API}/tokens${all ? "?all=1" : ""}`).then((r) => r.tokens),
+  createToken: (label: string) => request<{ token: string; info: AccessTokenView }>("POST", `${API}/tokens`, { label }),
+  revokeToken: (id: string) => request<AccessTokenView>("DELETE", `${API}/tokens/${encodeURIComponent(id)}`),
+  listAllLocks: () => request<{ locks: (SubBlockLock & { kind: NotebookKind; projectId: string; projectName: string })[] }>("GET", `${API}/locks`).then((r) => r.locks),
+
+  // ---- locks: a sub-block taken by someone ----
+  getLocks: () => request<{ locks: SubBlockLock[] }>("GET", `${nbBase}/locks`).then((r) => r.locks),
+  lockSubBlock: (blockId: string, subBlockId: string) => request<SubBlockLock>("POST", `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}/lock`),
+  unlockSubBlock: (blockId: string, subBlockId: string, force = false) =>
+    request<void>("DELETE", `${nbBase}/blocks/${blockId}/subblocks/${subBlockId}/lock${force ? "?force=1" : ""}`),
+  /** Same, for a project other than the open one (owner's list of locks). */
+  unlockIn: (kind: NotebookKind, projectId: string, blockId: string, subBlockId: string) =>
+    request<void>("DELETE", `${API}/${kind}/${encodeURIComponent(projectId)}/blocks/${blockId}/subblocks/${subBlockId}/lock?force=1`),
 
   // ---- change notifications ----
   getNotifications: () => request<{ notifications: Notification[] }>("GET", `${nbBase}/notifications`).then((r) => r.notifications),
@@ -287,6 +357,9 @@ export const api = {
 };
 
 /** URL of a file inside a block folder; stable across folder renumbering. */
+/** Picture of a user or agent (`v`: its version, so a new picture is not served from the cache). */
+export const avatarUrl = (id: string, v: number) => `${API}/avatars/${encodeURIComponent(id)}?v=${v}`;
+
 export const blockFileUrl = (blockId: string, relPath: string) => `${nbBase}/blocks/${blockId}/files/${relPath}`;
 
 const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");

@@ -3,25 +3,50 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { createReadStream } from "node:fs";
 import { extname } from "node:path";
 import { PassThrough } from "node:stream";
-import { HttpError, badRequest } from "../errors.js";
+import { HttpError, badRequest, notFound } from "../errors.js";
+import { requireOwner } from "../auth.js";
+import type { AccountStore } from "../store/AccountStore.js";
+import type { FastifyRequest } from "fastify";
 import { ARCHIVE_FORMAT, ARCHIVE_VERSION, LIMITS, MANIFEST_FILE } from "../store/templateArchive.js";
 import {
   CreateProjectBodySchema,
   ProjectIdSchema,
   UpdateProjectBodySchema,
   UserProfileSchema,
+  type AccessLevel,
   type NotebookKind,
 } from "@sourcebook/shared";
 import { z } from "zod";
-import type { UserStore } from "../store/UserStore.js";
 import type { WorkspaceStore } from "../store/WorkspaceStore.js";
 
-/** Workspace-level API: user profile, sub-block types, and the project/template collections. */
+/**
+ * Workspace-level API: user profile, sub-block types, and the project/template collections. Users see only the
+ * projects/templates they have access to; creating needs the permission, deleting is for the owner.
+ */
 export const workspaceRoutes =
-  (workspace: WorkspaceStore, users: UserStore, types: () => { type: string; label: string; sourceExt: string }[]): FastifyPluginAsyncZod =>
+  (workspace: WorkspaceStore, accounts: AccountStore, types: () => { type: string; label: string; sourceExt: string }[]): FastifyPluginAsyncZod =>
   async (app) => {
-    app.get("/api/user", async () => users.get());
-    app.put("/api/user", { schema: { body: UserProfileSchema } }, async (req) => users.set(req.body));
+    /** 404 (not 403) without access: users do not learn which projects exist. */
+    const need = (req: FastifyRequest, kind: NotebookKind, id: string, level: AccessLevel) => {
+      const has = accounts.accessLevel(req.principal.user, kind, id);
+      if (!has) throw notFound(`${kind === "projects" ? "Project" : "Template"} ${id}`);
+      if (level === "write" && has !== "write") throw new HttpError(403, "You have read-only access to this project");
+    };
+    const canCreate = (req: FastifyRequest) => {
+      if (!req.principal.user.canCreateProjects) throw new HttpError(403, "You are not allowed to create projects or templates (ask the owner)");
+    };
+    /** The creator of a project/template may work on it. */
+    const grantCreator = async (req: FastifyRequest, kind: NotebookKind, id: string) => {
+      if (req.principal.user.role !== "owner") await accounts.setAccess(kind, id, { [req.principal.user.username]: "write" });
+    };
+
+    // The signed-in user's profile (the username is the account id and does not change).
+    app.get("/api/user", async (req) => ({ name: req.principal.user.name, username: req.principal.user.username }));
+    app.put("/api/user", { schema: { body: UserProfileSchema } }, async (req) => {
+      if (req.body.username !== req.principal.user.username) throw badRequest("The username cannot be changed");
+      const user = await accounts.updateUser(req.principal.user.username, { name: req.body.name });
+      return { name: user.name, username: user.username };
+    });
     app.get("/api/types", async () => types());
 
     // ---- template archives ----
@@ -30,6 +55,7 @@ export const workspaceRoutes =
     /** Template as a ZIP: manifest + the template folder (comments excluded), streamed. */
     app.get("/api/templates/:projectId/archive.zip", { schema: { params: z.object({ projectId: ProjectIdSchema }) } }, async (req, reply) => {
       const id = req.params.projectId;
+      need(req, "templates", id, "read");
       const summary = await workspace.summary("templates", id);
       const files = await workspace.archiveFiles("templates", id);
       const manifest = {
@@ -70,6 +96,7 @@ export const workspaceRoutes =
       "/api/templates/import",
       { schema: { querystring: z.object({ dryRun: z.enum(["1", "0", "true", "false"]).optional(), name: z.string().max(120).optional() }) } },
       async (req, reply) => {
+        canCreate(req);
         const file = await req.file({ limits: { fileSize: LIMITS.compressedBytes, files: 1 } });
         if (!file) throw badRequest("Missing file");
         const data = await file.toBuffer();
@@ -80,23 +107,40 @@ export const workspaceRoutes =
         const dryRun = req.query.dryRun === "1" || req.query.dryRun === "true";
         if (dryRun) return { valid: true, ...result.preview };
         reply.code(201);
-        return { ...(await workspace.importTemplate(result, req.query.name)), warnings: result.preview.warnings };
+        const created = await workspace.importTemplate(result, req.query.name);
+        await grantCreator(req, "templates", created.id);
+        return { ...created, warnings: result.preview.warnings };
       },
     );
 
     for (const kind of ["projects", "templates"] as NotebookKind[]) {
       const params = z.object({ projectId: ProjectIdSchema });
-      app.get(`/api/${kind}`, async () => workspace.list(kind));
-      app.post(`/api/${kind}`, { schema: { body: CreateProjectBodySchema } }, async (req, reply) => {
-        reply.code(201);
-        return workspace.create(kind, req.body);
-      });
-      app.get(`/api/${kind}/:projectId`, { schema: { params } }, async (req) => workspace.summary(kind, req.params.projectId));
-      app.patch(`/api/${kind}/:projectId`, { schema: { params, body: UpdateProjectBodySchema } }, async (req) =>
-        workspace.update(kind, req.params.projectId, req.body),
+      app.get(`/api/${kind}`, async (req) =>
+        (await workspace.list(kind)).flatMap((p) => {
+          const access = accounts.accessLevel(req.principal.user, kind, p.id);
+          return access ? [{ ...p, access }] : [];
+        }),
       );
+      app.post(`/api/${kind}`, { schema: { body: CreateProjectBodySchema } }, async (req, reply) => {
+        canCreate(req);
+        if (req.body.from) need(req, req.body.from.kind, req.body.from.id, "read");
+        reply.code(201);
+        const created = await workspace.create(kind, req.body);
+        await grantCreator(req, kind, created.id);
+        return created;
+      });
+      app.get(`/api/${kind}/:projectId`, { schema: { params } }, async (req) => {
+        need(req, kind, req.params.projectId, "read");
+        return { ...(await workspace.summary(kind, req.params.projectId)), access: accounts.accessLevel(req.principal.user, kind, req.params.projectId) };
+      });
+      app.patch(`/api/${kind}/:projectId`, { schema: { params, body: UpdateProjectBodySchema } }, async (req) => {
+        need(req, kind, req.params.projectId, "write");
+        return workspace.update(kind, req.params.projectId, req.body);
+      });
       app.delete(`/api/${kind}/:projectId`, { schema: { params } }, async (req, reply) => {
+        requireOwner(req);
         await workspace.delete(kind, req.params.projectId);
+        await accounts.forget(kind, req.params.projectId);
         reply.code(204);
       });
     }

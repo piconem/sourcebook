@@ -17,6 +17,7 @@ import { CommentsPanel } from "../comments/CommentsPanel";
 import { Dialog } from "./Dialog";
 import { ObjectiveField } from "./ObjectiveField";
 import { InsertPoint } from "./InsertPoint";
+import { useReadOnly } from "../auth/EditAccess";
 import { SubBlockFrame } from "./SubBlockFrame";
 import { NotificationBadge } from "../notifications/NotificationBadge";
 
@@ -34,6 +35,7 @@ export function BlockView({
   depth?: number;
 }) {
   const qc = useQueryClient();
+  const readOnly = useReadOnly();
   const { data: block, error } = useBlock(blockId);
   const [title, setTitle] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -172,6 +174,7 @@ export function BlockView({
         <AttachmentsButton blockId={blockId} paths={block.references} />
         <input
           className="block-title"
+          readOnly={readOnly}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={saveTitle}
@@ -179,7 +182,7 @@ export function BlockView({
         />
         <NotificationBadge blockId={blockId} subBlockId={null} />
         <span className="muted">blocks/{block.folder}</span>
-        <button className="danger" onClick={requestBlockDelete}>
+        <button className="danger write-only" onClick={requestBlockDelete}>
           Delete block
         </button>
       </div>

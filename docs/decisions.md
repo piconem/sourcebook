@@ -43,6 +43,7 @@ remains the fallback if fidelity problems appear. `roundtrip.test.ts` guards the
 | code     | `NN-code.<ext>` — the extension encodes the language (`CODE_LANGUAGES` in shared) | – |
 | question | `NN-question.json` — `{ question, answer }` (a file that is not JSON is read as the question) | – |
 | choice   | `NN-choice.json` — `{ question, mode: "single"\|"multiple", options: [{ id, text }], selected: [ids], note }` | – |
+| csv      | `NN-csv.csv` — the data set as CSV (first record = header); content `{ csv, delimiter }`, delimiter detected on read | – |
 
 Question and multiple-choice sub-blocks are stored as JSON (unambiguous to parse, still readable and editable by an
 assistant with `edit_subblock_text`). `choice` validation: unique option ids, selected ids must exist, at most one
@@ -176,9 +177,9 @@ preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
 
 ## Top bar, user profile and comments
 - A top bar shows "Sourcebook" on the left and the user's avatar (initials, color from the username) on the
-  right; it opens Settings with the profile: display name and username (`^[a-z0-9][a-z0-9._-]{0,38}$`,
-  suggested from the name). The profile is per person, not per project: `$SOURCEBOOK_CONFIG_DIR`, else
-  `$XDG_CONFIG_HOME/sourcebook`, else `~/.config/sourcebook/user.json`; without one, the OS login is used.
+  right; it opens the user menu. The profile is the signed-in account (see "Accounts…"): its display name can change,
+  the username (`^[a-z0-9][a-z0-9._-]{0,38}$`) is the account id and cannot. Before accounts, the profile lived in
+  `~/.config/sourcebook/user.json` (`$SOURCEBOOK_CONFIG_DIR`, `$XDG_CONFIG_HOME`); it is imported as the owner.
 - Comments are attached to sub-blocks and stored next to them in `NN-type.comments.json`
   (`{ version: 1, comments: [{ id, author, createdAt, text, replies: [...] }] }`), renamed with the sub-block
   when it is renumbered, deleted with it, and removed when the last comment is deleted. Timestamps are set by
@@ -341,28 +342,33 @@ projects and templates, in both scrolling modes.
   `mcp`). `GET …/events` streams them (SSE, 25 s heartbeat). The editor refetches what changed; a sub-block with a newer
   revision reloads in place ("Updated by the assistant") unless there are unsaved local edits, in which case a banner
   offers "Load their version" / "Keep mine" — a stale save is refused with 409 and opens the same banner.
-- MCP settings (Settings → AI assistant): HTTP on/off, stdio on/off, read-only; stored in `settings.json` in the config
-  dir and kept in memory. The MCP server tags every API call with `x-sourcebook-mcp-transport: stdio|http`; a global
+- MCP settings (Settings → AI assistant, changed by owners): HTTP on/off, stdio on/off, read-only; stored in
+  `<workspace>/.sourcebook/settings.json` (imported from the old config dir) and kept in memory. The MCP server tags every API call with `x-sourcebook-mcp-transport: stdio|http`; a global
   `onRequest` hook refuses (403) calls from a disabled transport and non-GET MCP calls in read-only mode (reading
   `/api/settings/mcp` stays allowed so the stdio process can explain why). `/mcp` answers 503 when HTTP is off and
   registers only reading tools in read-only mode. `GET /api/settings/mcp` also returns the connection parameters
-  (URL with the real port; stdio command/args with the repository path from `packages/server/src/paths.ts`), from which
-  the UI builds copyable Claude Code commands and client JSON (shell-quoted: the path may contain `&`).
+  (`PUBLIC_URL/mcp` with an `Authorization: Bearer <agent token>` header; stdio command/args with the repository path
+  from `packages/server/src/paths.ts` and `SOURCEBOOK_TOKEN`), from which the UI builds copyable Claude Code commands and
+  client JSON (shell-quoted: the path may contain `&`); after creating an agent, with its real token.
 - Comments by the assistant carry `author.kind: "assistant"` and show an "AI" badge. 🔗 buttons copy references
   (section, sub-block, code lines, quoted Markdown text) to paste in the chat.
-- Agent identities (several agents on one project): an agent signs comments, replies, resolutions, notifications,
-  reload requests and transcriptions as `{ name, username: <id>, kind: "assistant" }`. The connection's identity
-  comes from `SOURCEBOOK_MCP_AGENT_ID` / `_NAME` (stdio; the older `SOURCEBOOK_MCP_AUTHOR_USERNAME` / `_NAME` still
-  work) or, on `/mcp`, from `?agent_id=&agent_name=` or the `x-sourcebook-agent-id` / `-name` headers (400 on an
-  invalid id); default `claude` / "Claude (assistant)". Agents sharing a connection pass `agent: { id, name }` to the
-  signing tools; ids are normalized ("Reviewer Bot" → `reviewer-bot`). `whoami` reports the identity.
-- Participants: there is no user registry; `GET …/participants` (MCP `list_participants`) derives, per project, who
-  signed comments, replies, resolutions and notifications (latest name per username, contributions, last activity),
-  plus the local user (reserved). When a request passes an explicit `author`, the server refuses (409) the local
-  user's username, a username already used with another name, or a name already used by another username (names
-  compared trimmed and case-insensitively). The same id + name is the same agent. Requests without `author` (the web
-  editor) are never checked. Only per project: the same id may mean different agents in different projects.
+- Agent identities: one MCP configuration per user. `/mcp` requires the user's access token (`Authorization: Bearer
+  sbu_…`, 401 otherwise) and forwards it on every in-process API call (stdio: `SOURCEBOOK_TOKEN`). Every tool gets an
+  optional `agent` parameter (added by wrapping `registerTool`); the tool runs inside an AsyncLocalStorage holding it and
+  the API layer sends it as `x-sourcebook-agent`. The server accepts only agents of the token's user (403 otherwise);
+  MCP calls without one use the user's default agent, so an assistant never signs as the person (with no agent yet, it
+  may still read and `register_agent`). The server signs with `{ name, username: <agent id>, kind: "assistant",
+  onBehalfOf: { username, name } }` and ignores `author` in bodies. Agents created by an earlier build with a token of
+  their own (`sbk_…`) keep working. Single-user mode (`buildApp({ auth: false })`, used by tests)
+  keeps the connection identity from `SOURCEBOOK_MCP_AGENT_ID` / `_NAME` or `?agent_id=&agent_name=` and the
+  participants check below.
+- Participants: `GET …/participants` (MCP `list_participants`) lists the users who may open the project and their
+  agents (registered identities), plus whoever signed comments, replies, resolutions and notifications (latest name,
+  contributions, last activity). Agent ids are unique across users and agents, and agent names unique among active
+  agents, when they are created. In single-user mode an explicit `author` is refused (409) when it would be mistaken
+  for someone else (the local user's username, an id used with another name, a name used by another id).
 - Edits to content are still attributed to "the assistant" (live-event origin `mcp`), not to a specific agent.
+- Locks for agents: `lock_subblock`, `unlock_subblock`, `list_locks`; a 423 names the holder.
 - `move_references` moves reference files/folders between folders (same as the UI's Move to…).
 - Limits: sub-blocks move only within their section; images/drawings are read as descriptions and cannot be written
   via MCP (question and choice sub-blocks are written as JSON); binary references (PDF, Office) cannot be read as text.
@@ -489,7 +495,86 @@ prompts is parsed by the MCP server's reference parser.
   columns may interleave; spreadsheet sheets are capped at 1000 rows × 40 columns; ZIPs include up to 200 files, one
   level deep; `.ppt`/`.xls` (old binary formats) are not readable.
 
+## Accounts, access, agents and locks
+- Auth is always on in the server binary. Principal: a web session (cookie `sourcebook_session[_<base>]`, `HttpOnly`,
+  `SameSite=Strict`, `Path=<base path>`, `Secure` with an https public URL; 30 days, renewed daily with use) or an agent
+  token (`Authorization: Bearer sbk_…`). Writes with a session need the `x-sourcebook-client` header (the web client
+  sends it; cross-site forms cannot) — with SameSite=Strict, the CSRF protection. Login throttling: 5 failures per
+  username+IP, then a doubling wait up to 15 minutes. Until a temporary password is changed, only `/api/auth/*` works
+  (403 `password_change_required`).
+- Storage in `<workspace>/.sourcebook/` (0700 / 0600, `.gitignore` = `*`) rather than the per-person config dir: one
+  volume to mount and back up in a container, and the accounts belong to the workspace they protect. Passwords:
+  scrypt (N=16384, r=8, p=1, 16-byte salt, `timingSafeEqual`; a dummy hash is computed for unknown users). Tokens and
+  session ids: 32 random bytes, stored as SHA-256. No dependency added (`node:crypto`, cookies parsed by hand).
+- First start: owner = profile of an older version (user.json), else the OS login if the workspace already has projects
+  (so existing comments stay theirs), else `admin`; password from `SOURCEBOOK_ADMIN_PASSWORD` or generated and printed
+  once. `reset-owner-password` (server script) sets a new temporary one offline.
+- Roles: owner (everything; at least one active owner is kept) and member. `canCreateProjects` lets a member create
+  projects/templates (also import, duplicate): the creator gets `write`. Deleting projects: owners only. Access per
+  project/template and username in `access.json`: `read` = view + comment (start threads, reply, resolve/reopen,
+  re-anchor, delete own comments, mark notifications read), `write` = everything else. Routes declare
+  `config.access`; the default is read for GET, write otherwise, checked in the project-scoped hook. No access = 404.
+- Access tokens (`tokens.json`, SHA-256, prefix kept for display) are created by the signed-in user (not with a token)
+  and shown once. Agents are identities of a user (unique ids across users and agents, unique names among active
+  agents), created in Settings or by the assistant (`register_agent`); the first is the default. They have the user's
+  rights at every request (revoked token or agent, disabled or deleted user → 401/403). A script with a token and no
+  agent header acts as the user.
+- Agents can be revoked (stopped, history kept, id stays taken) or deleted: `POST /api/agents/:id/delete` removes, in
+  every project and template, the threads it started (other people's replies go with them), its replies, its
+  resolutions (threads reopen), its notifications and locks, then its picture and record; the id becomes free.
+  `GET …/footprint` computes the same per project without changing anything (the UI shows it, and asks to type the id).
+  Matching is by username, so comments of the pre-accounts era signed with that id go too.
+- Pictures of users and agents: `.sourcebook/avatars/<id>.webp`. The browser crops a square (drag, wheel/slider zoom,
+  circular preview) and uploads a 256 px PNG as a data URL; the server (`@napi-rs/canvas`, already used for PDFs) crops
+  the central square and re-encodes 256×256 WebP whatever it receives, so a script cannot store anything else. Ids
+  are shared by users and agents, so one map `id → version` (`GET /api/avatars`) drives every `<Avatar>`; the version
+  (mtime) in the URL lets the browser cache pictures forever. Pictures of revoked agents stay (old comments).
+- Notifications: read state per user (`readBy`); files of older versions (`read: true`) count as read by all.
+- Locks: per sub-block in the project's `locks.json` (not copied, not archived), live event `locks`. Holder =
+  user or agent; changing (content, title, objective, edits) or deleting a sub-block held by someone else, or deleting a
+  section containing one, answers 423; moving sections/sub-blocks is allowed (content is untouched). No expiry by
+  design: holder, the user of a holding agent, or an owner (force) release it; locks of deleted sub-blocks vanish.
+- UI: a sign-in gate (`AuthGate`) in front of the app; 401 anywhere brings it back. Read-only projects get a badge,
+  hidden write controls (`.write-only`) and sub-block bodies made `inert`; a sub-block held by someone else is `inert`
+  too, with a 🔒 badge naming holder and user. Settings tabs: Account (name, password), My agents, AI assistant,
+  and for owners Users, Project access, Locks.
+
+## Startup configuration and base path
+- `packages/server/src/config.ts`: CLI options > environment > defaults (workspace, host, port, base path, public URL,
+  admin password, trust proxy), validated at startup.
+- Base path: every route (API, `/mcp`, events, client) is registered under the prefix; URLs generated by the server
+  use `app.basePath`; `/` and `<base>` redirect to `<base>/`. The client is built once with relative assets (`base:
+  "./"`) and served by the server from `packages/client/dist` with `window.__SOURCEBOOK__ = { basePath }` injected into
+  `index.html`; `api/client.ts` builds every URL from it. Routes of the client are hash-based, so a proxy only forwards
+  the prefix. The `/mcp` local-only check also accepts the host of the public URL.
+
+## CSV data sub-blocks
+- The data lives in the sub-block (`NN-csv.csv`), not as a link to References: it is versioned and edited like any
+  content; References files can be imported into it. RFC 4180 parsing (quoted delimiters, quotes, line breaks) in
+  `packages/shared/src/csv.ts`; edits in the table rewrite the CSV with minimal quoting (formatting of untouched rows
+  may be normalized). Limit 100 000 rows.
+- Sorting and filtering only change the view. Column kinds are inferred (number — also "1.234,5" / "12%" —, date,
+  boolean, text, empty) for the summary and numeric sorting.
+- Comments use line anchors (`commentAnchor: "lines"`), so rows are commented exactly like code lines, through REST and
+  MCP alike. The table keeps comments on their rows when rows are deleted (a comment only on a deleted row detaches);
+  anchors are re-stored after saves by the shared anchoring hook.
+
+## Bundled templates (Sourcebook Demo)
+- Generated by code at startup (`packages/server/src/seed/`) through the same stores the API uses, rather than shipped
+  as a folder: every sub-block is validated by the current types, and there are no generated files to keep in sync.
+  A test checks that the demo covers every registered sub-block type, so adding a type means adding it to the demo.
+- Built in `templates/.seed-<id>` and renamed into place, so a half-built template never appears. Seeded once per id
+  (`.sourcebook/seeded.json`): deleting it is respected, and a later version can add new bundled templates to existing
+  workspaces. An existing folder with the same id is never touched.
+- Only `index.ts` (the real server) enables it (`buildApp({ seedTemplates: true })`); tests and embedders start from an
+  empty workspace.
+
 ## Known limitations
+- Users with read access cannot select text inside a sub-block to anchor a comment (the body is inert): they comment
+  on the whole sub-block.
+- A lock taken by a browser stays if the window is closed: release it later or ask an owner.
+- One server process per workspace (accounts and sessions are cached in memory; edit `.sourcebook/` only while it is
+  stopped).
 - Moving references keeps names: a name clash in the destination refuses the whole move (rename first).
 - The MCP `search` tool looks in the notebook and the bibliography, not inside reference files or their converted
   Markdown (read them with `read_reference`).

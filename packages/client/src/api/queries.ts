@@ -8,6 +8,7 @@ export const keys = {
   comments: (blockId: string, subBlockId: string) => ["comments", blockId, subBlockId] as const,
   projectComments: ["project-comments"] as const,
   notifications: ["notifications"] as const,
+  locks: ["locks"] as const,
 };
 
 export const useProjectComments = () => useQuery({ queryKey: keys.projectComments, queryFn: api.getProjectComments });

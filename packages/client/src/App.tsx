@@ -27,6 +27,7 @@ import { ReferencesProvider, useReferences } from "./references/ReferencesContex
 import { BibliographyPage } from "./bibliography/BibliographyPage";
 import { BibliographyProvider, useBibliography } from "./bibliography/BibliographyContext";
 import { BibIcon } from "./bibliography/CitationsButton";
+import { ReadOnlyContext } from "./auth/EditAccess";
 
 /** Sidebar entry opening the References file manager in the main area. */
 function ReferencesNavItem({ active, onClick }: { active: boolean; onClick(): void }) {
@@ -58,6 +59,9 @@ function BibliographyNavItem({ active, onClick }: { active: boolean; onClick(): 
   );
 }
 
+/** Queries not tied to the open project/template, kept when another one is opened. */
+const WORKSPACE_QUERIES = new Set(["me", "user", "notebooks", "summary", "settings", "agents", "tokens", "users", "access", "all-locks", "avatars"]);
+
 /** Editor for one project or template (the notebook API base is set before anything is fetched). */
 function ProjectEditor({
   kind,
@@ -65,9 +69,12 @@ function ProjectEditor({
   scrollMode,
   target,
   actionsSlot,
+  readOnly,
 }: {
   kind: NotebookKind;
   id: string;
+  /** The user may only read (and comment). */
+  readOnly: boolean;
   scrollMode: ScrollMode;
   /** Section / sub-block / comment named by the URL. */
   target?: Target;
@@ -78,7 +85,8 @@ function ProjectEditor({
   useState(() => {
     setNotebookBase(kind, id);
     // Drop cached notebook data of the previously opened project/template.
-    qc.removeQueries({ predicate: (q) => !["user", "notebooks", "summary"].includes(String(q.queryKey[0])) });
+    // Workspace-level data stays — above all the session ("me"): dropping it would re-mount the app endlessly.
+    qc.removeQueries({ predicate: (q) => !WORKSPACE_QUERIES.has(String(q.queryKey[0])) });
     return 0;
   });
   const { data: project, error } = useProject();
@@ -166,16 +174,18 @@ function ProjectEditor({
   if (!project) return <p className="muted editor-error">Loading…</p>;
 
   return (
+    <ReadOnlyContext.Provider value={readOnly}>
     <ExternalChangesContext.Provider value={changes}>
     <FocusContext.Provider value={focus}>
     <AskAiProvider project={{ kind, id, name: project.name }}>
     <ReferencesProvider>
     <BibliographyProvider onGoTo={selectBlock}>
-    <div className="app" style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}>
+    <div className={`app${readOnly ? " read-only" : ""}`} style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}>
       <aside className="sidebar">
         <div className="sidebar-head">
           <h1 title={project.name}>{project.name}</h1>
           {kind === "templates" && <span className="badge-template" title="Projects created from this template start with a copy of it">Template</span>}
+          {readOnly && <span className="badge-template" title="You can read and comment, not edit (ask the owner for write access)">Read-only</span>}
           <AskAiButton target={() => ({ kind: "document" })} />
           <button
             className="icon"
@@ -196,7 +206,7 @@ function ProjectEditor({
         </nav>
         <div className="sidebar-label">Structure</div>
         <OutlineTree project={project} storageKey={`${kind}/${id}`} selectedId={page === "block" ? selected : null} onSelect={selectBlock} onGoTo={goTo} />
-        <div className="sidebar-actions">
+        <div className="sidebar-actions write-only">
           <button onClick={() => addBlock(null)}>+ Section</button>
           <button disabled={!selected} onClick={() => addBlock(selected)}>
             + Sub-section
@@ -235,6 +245,7 @@ function ProjectEditor({
     </AskAiProvider>
     </FocusContext.Provider>
     </ExternalChangesContext.Provider>
+    </ReadOnlyContext.Provider>
   );
 }
 
@@ -270,6 +281,7 @@ export function App() {
           scrollMode={scrollMode}
           target={route.target}
           actionsSlot={actionsSlot}
+          readOnly={summary.data?.access === "read"}
         />
       )}
     </div>

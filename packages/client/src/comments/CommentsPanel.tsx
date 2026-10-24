@@ -63,6 +63,7 @@ function Entry({ entry, onDelete, kind, actions }: { entry: Comment | CommentRep
           <span className="comment-name">
             {entry.author.name}
             {entry.author.kind === "assistant" && <span className="badge-ai" title="Written by an AI assistant">AI</span>}
+            {entry.author.onBehalfOf && <span className="author-for"> · for {entry.author.onBehalfOf.name}</span>}
           </span>
           <span className="muted small">
             @{entry.author.username} · <time dateTime={entry.createdAt} title={fullTime(entry.createdAt)}>{relativeTime(entry.createdAt)}</time>

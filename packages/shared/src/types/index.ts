@@ -7,8 +7,9 @@ import { equationType } from "./equation.js";
 import { codeType } from "./code.js";
 import { questionType } from "./question.js";
 import { choiceType } from "./choice.js";
+import { csvType } from "./csv.js";
 
-export { markdownType, mermaidType, imageType, drawingType, equationType, codeType, questionType, choiceType };
+export { markdownType, mermaidType, imageType, drawingType, equationType, codeType, questionType, choiceType, csvType };
 export type { MarkdownContent } from "./markdown.js";
 export type { MermaidContent } from "./mermaid.js";
 export type { ImageContent } from "./image.js";
@@ -17,6 +18,7 @@ export type { EquationContent } from "./equation.js";
 export type { CodeContent } from "./code.js";
 export type { QuestionContent } from "./question.js";
 export type { ChoiceContent, ChoiceOption } from "./choice.js";
+export type { CsvContent } from "./csv.js";
 
 export const coreTypes: SubBlockTypeCore<any>[] = [
   markdownType,
@@ -27,6 +29,7 @@ export const coreTypes: SubBlockTypeCore<any>[] = [
   codeType,
   questionType,
   choiceType,
+  csvType,
 ];
 
 export const createCoreRegistry = () => createRegistry(coreTypes);

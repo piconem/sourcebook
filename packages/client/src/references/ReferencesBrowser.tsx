@@ -484,8 +484,8 @@ export function ReferencesBrowser() {
             onChange={(e) => setQuery(e.target.value)}
             onClick={(e) => e.stopPropagation()}
           />
-          <button onClick={(e) => (e.stopPropagation(), ask({ kind: "folder" }))}>＋ New folder</button>
-          <button className="primary" onClick={(e) => (e.stopPropagation(), fileInput.current?.click())}>
+          <button className="write-only" onClick={(e) => (e.stopPropagation(), ask({ kind: "folder" }))}>＋ New folder</button>
+          <button className="primary write-only" onClick={(e) => (e.stopPropagation(), fileInput.current?.click())}>
             ⤒ Upload
           </button>
           <div className="segmented" role="group" aria-label="Layout">
@@ -532,9 +532,9 @@ export function ReferencesBrowser() {
             </button>
             <span className="ref-selection-name">{selectedNodes.length} selected</span>
             <button onClick={() => download(selectedNodes)}>Download ZIP</button>
-            <button onClick={() => ask({ kind: "move", nodes: selectedNodes })}>Move to…</button>
+            <button className="write-only" onClick={() => ask({ kind: "move", nodes: selectedNodes })}>Move to…</button>
             {convertible(selectedNodes) && <button onClick={() => convertNow(selectedNodes, false)}>Convert for the assistant</button>}
-            <button className="danger" onClick={() => ask({ kind: "delete", nodes: selectedNodes })}>
+            <button className="write-only danger" onClick={() => ask({ kind: "delete", nodes: selectedNodes })}>
               Delete
             </button>
             {!allSelected && (
@@ -558,9 +558,9 @@ export function ReferencesBrowser() {
             <button onClick={() => download([selectedNode])}>{selectedNode.kind === "dir" ? "Download ZIP" : "Download"}</button>
             {selectedNode.mcp?.kind === "markdown" && <button onClick={() => setInspecting(selectedNode.path)}>Assistant content</button>}
             {isImageFile(selectedNode) && <button onClick={() => setInserting({ path: selectedNode.path, caption: "" })}>Insert into a section…</button>}
-            <button onClick={() => ask({ kind: "rename", node: selectedNode })}>Rename</button>
-            <button onClick={() => ask({ kind: "move", nodes: [selectedNode] })}>Move to…</button>
-            <button className="danger" onClick={() => ask({ kind: "delete", nodes: [selectedNode] })}>
+            <button className="write-only" onClick={() => ask({ kind: "rename", node: selectedNode })}>Rename</button>
+            <button className="write-only" onClick={() => ask({ kind: "move", nodes: [selectedNode] })}>Move to…</button>
+            <button className="write-only danger" onClick={() => ask({ kind: "delete", nodes: [selectedNode] })}>
               Delete
             </button>
           </>
@@ -694,10 +694,10 @@ export function ReferencesBrowser() {
             <>
               <div className="context-menu-title">{menuTargets.length} selected</div>
               <button onClick={() => download(menuTargets)}>Download as ZIP</button>
-              <button onClick={() => ask({ kind: "move", nodes: menuTargets })}>Move to…</button>
+              <button className="write-only" onClick={() => ask({ kind: "move", nodes: menuTargets })}>Move to…</button>
               {convertible(menuTargets) && <button onClick={() => convertNow(menuTargets, false)}>Convert for the assistant</button>}
               <hr />
-              <button className="danger" onClick={() => ask({ kind: "delete", nodes: menuTargets })}>
+              <button className="write-only danger" onClick={() => ask({ kind: "delete", nodes: menuTargets })}>
                 Delete {menuTargets.length} items…
               </button>
             </>
@@ -705,8 +705,8 @@ export function ReferencesBrowser() {
             <>
               <button onClick={() => (setMenu(null), openNode(menu.node))}>{menu.node.kind === "dir" ? "Open folder" : "Open"}</button>
               <button onClick={() => download([menu.node])}>{menu.node.kind === "dir" ? "Download as ZIP" : "Download"}</button>
-              <button onClick={() => ask({ kind: "rename", node: menu.node })}>Rename…</button>
-              <button onClick={() => ask({ kind: "move", nodes: [menu.node] })}>Move to…</button>
+              <button className="write-only" onClick={() => ask({ kind: "rename", node: menu.node })}>Rename…</button>
+              <button className="write-only" onClick={() => ask({ kind: "move", nodes: [menu.node] })}>Move to…</button>
               {isImageFile(menu.node) && <button onClick={() => (setMenu(null), setInserting({ path: menu.node.path, caption: "" }))}>Insert into a section…</button>}
               {menu.node.mcp?.kind === "markdown" && (
                 <>
@@ -717,7 +717,7 @@ export function ReferencesBrowser() {
               )}
               {menu.node.kind === "dir" && <button onClick={() => convertNow([menu.node], false)}>Convert folder for the assistant</button>}
               <hr />
-              <button className="danger" onClick={() => ask({ kind: "delete", nodes: [menu.node] })}>
+              <button className="write-only danger" onClick={() => ask({ kind: "delete", nodes: [menu.node] })}>
                 Delete…
               </button>
             </>

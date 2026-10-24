@@ -160,7 +160,7 @@ describe("live events", () => {
   it("bibliography changes are announced to open editors", async () => {
     const { buildApp } = await import("../src/app.js");
     const { tempProject } = await import("./helpers.js");
-    const { app, workspace } = await buildApp(await tempProject(), { configDir: await tempProject() });
+    const { app, workspace } = await buildApp(await tempProject(), { auth: false, configDir: await tempProject() });
     await app.inject({ method: "POST", url: "/api/projects", payload: { name: "Live" } });
     const { store } = await workspace.open("projects", "live");
     const events: unknown[] = [];

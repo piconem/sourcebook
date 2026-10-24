@@ -19,18 +19,17 @@ async function setup() {
 }
 
 describe("user profile", () => {
-  it("defaults to the OS user, validates and persists outside the project", async () => {
-    const { root, configDir, workspace, call } = await setup();
-    const initial = (await call("GET", "/api/user")).body;
-    expect(initial.username).toMatch(/^[a-z0-9][a-z0-9._-]*$/);
+  it("is the signed-in account: the name can change, the username cannot; stored in the workspace's .sourcebook", async () => {
+    const { root, workspace, configDir, call } = await setup();
+    // A new workspace without an older profile: the owner account is "admin".
+    expect((await call("GET", "/api/user")).body).toEqual({ name: "Administrator", username: "admin" });
 
-    expect((await call("PUT", "/api/user", { name: "Mario Rossi", username: "Mario Rossi" })).status).toBe(400);
-    expect((await call("PUT", "/api/user", { name: " ", username: "mariorossi" })).status).toBe(400);
-    expect((await call("PUT", "/api/user", { name: "Mario Rossi", username: "mariorossi" })).body).toEqual({
-      name: "Mario Rossi",
-      username: "mariorossi",
-    });
-    expect(JSON.parse(await readFile(join(configDir, "user.json"), "utf8")).username).toBe("mariorossi");
+    expect((await call("PUT", "/api/user", { name: "Mario Rossi", username: "mariorossi" })).status).toBe(400);
+    expect((await call("PUT", "/api/user", { name: " ", username: "admin" })).status).toBe(400);
+    expect((await call("PUT", "/api/user", { name: "Mario Rossi", username: "admin" })).body).toEqual({ name: "Mario Rossi", username: "admin" });
+    const accounts = JSON.parse(await readFile(join(workspace, ".sourcebook", "accounts.json"), "utf8"));
+    expect(accounts.users[0]).toMatchObject({ username: "admin", name: "Mario Rossi", role: "owner" });
+    expect(accounts.users[0].password).toMatch(/^scrypt\$/);
     expect(existsSync(join(root, "user.json"))).toBe(false);
 
     const { app: again } = await buildProjectApp({ workspace, configDir });
@@ -41,10 +40,10 @@ describe("user profile", () => {
 describe("comments", () => {
   it("adds comments and replies in time order, authored by the current profile by default", async () => {
     const { root, call, b, s1, url } = await setup();
-    await call("PUT", "/api/user", { name: "Mario Rossi", username: "mariorossi" });
+    await call("PUT", "/api/user", { name: "Mario Rossi", username: "admin" });
 
     const c1 = (await call("POST", url(s1), { text: "  Is this still valid?  " })).body;
-    expect(c1).toMatchObject({ text: "Is this still valid?", author: { name: "Mario Rossi", username: "mariorossi" }, replies: [] });
+    expect(c1).toMatchObject({ text: "Is this still valid?", author: { name: "Mario Rossi", username: "admin" }, replies: [] });
     expect(Date.parse(c1.createdAt)).not.toBeNaN();
 
     const c2 = (await call("POST", url(s1), { text: "Second", author: { name: "Anna Bianchi", username: "annab" } })).body;

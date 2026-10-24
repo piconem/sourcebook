@@ -17,6 +17,8 @@ import { AttachmentsButton } from "../references/AttachmentsButton";
 import { ObjectiveField } from "./ObjectiveField";
 import { useDebouncedSaver } from "./useDebouncedSaver";
 import { NotificationBadge } from "../notifications/NotificationBadge";
+import { LockButton } from "./LockButton";
+import { useReadOnly, useSubBlockLock } from "../auth/EditAccess";
 
 export function SubBlockFrame(props: {
   blockId: string;
@@ -169,19 +171,25 @@ export function SubBlockFrame(props: {
   };
 
   const Editor = def?.component;
+  const readOnly = useReadOnly();
+  const lockState = useSubBlockLock(subBlock.id);
+  // Not editable: read-only access, or someone else holds the sub-block.
+  const frozen = readOnly || (!!lockState.lock && !lockState.mine);
+  // `inert` (no focus, no editing) is not in React 18's types: set it as a plain attribute.
+  const inert = frozen ? ({ inert: "" } as Record<string, string>) : {};
   return (
     <>
     {expanded && <div className="subblock-backdrop" onClick={() => setExpanded(false)} />}
     <section
       id={`subblock-${subBlock.id}`}
       ref={setNodeRef}
-      className={`subblock${isDragging ? " dragging" : ""}${expanded ? " expanded" : ""}`}
+      className={`subblock${isDragging ? " dragging" : ""}${expanded ? " expanded" : ""}${frozen ? " frozen" : ""}${lockState.lock ? " locked" : ""}`}
       style={expanded ? undefined : { transform: CSS.Translate.toString(transform), transition }}
       role={expanded ? "dialog" : undefined}
       aria-modal={expanded || undefined}
     >
       <header className="subblock-head">
-        {!expanded && (
+        {!expanded && !readOnly && (
           <button className="handle" ref={setActivatorNodeRef} {...attributes} {...listeners} title="Drag to reorder">
             ⠿
           </button>
@@ -194,7 +202,8 @@ export function SubBlockFrame(props: {
           className="sub-title"
           value={title}
           maxLength={200}
-          placeholder={`${def?.label ?? subBlock.type} — add a title`}
+          placeholder={frozen ? "" : `${def?.label ?? subBlock.type} — add a title`}
+          readOnly={frozen}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => {
             const next = title.trim();
@@ -205,6 +214,7 @@ export function SubBlockFrame(props: {
           onKeyDown={(e) => (e.key === "Enter" || e.key === "Escape") && (e.target as HTMLInputElement).blur()}
         />
         <NotificationBadge blockId={blockId} subBlockId={subBlock.id} />
+        {!readOnly && <LockButton blockId={blockId} subBlockId={subBlock.id} state={lockState} beforeRelease={flush} />}
         <span className="file">{subBlock.source}</span>
         {flash && <span className="live-flash">{flash}</span>}
         <span className={`save ${state}`} title={error ?? undefined}>
@@ -250,7 +260,7 @@ export function SubBlockFrame(props: {
             <path d="M12 8.5v7M8.5 12h7" />
           </svg>
         </button>
-        {!objective && !showObjective && (
+        {!objective && !showObjective && !frozen && (
           <button className="icon" title="Add objective" aria-label="Add objective" onClick={() => setShowObjective(true)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <circle cx="12" cy="12" r="9" />
@@ -275,7 +285,7 @@ export function SubBlockFrame(props: {
             </svg>
           )}
         </button>
-        {!expanded && (
+        {!expanded && !frozen && (
           <button
             className="danger"
             onClick={async () => {
@@ -304,7 +314,7 @@ export function SubBlockFrame(props: {
       )}
       {metaError && <p className="render-error">{metaError}</p>}
       {(objective || showObjective) && (
-        <div className="subblock-objective">
+        <div className="subblock-objective" {...inert}>
           <ObjectiveField
             value={objective}
             autoFocus={showObjective && !objective}
@@ -317,7 +327,7 @@ export function SubBlockFrame(props: {
           />
         </div>
       )}
-      <div className="subblock-body surface">
+      <div className="subblock-body surface" {...inert} aria-readonly={frozen || undefined}>
         {Editor ? (
           <Suspense fallback={<p className="muted">Loading editor…</p>}>
             <Editor

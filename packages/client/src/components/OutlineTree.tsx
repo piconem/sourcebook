@@ -18,6 +18,7 @@ import { api } from "../api/client";
 import { keys, useNotifications } from "../api/queries";
 import { BellIcon } from "../notifications/NotificationsButton";
 import type { Target } from "../router";
+import { useReadOnly } from "../auth/EditAccess";
 import { ancestorsOf, applyDrop, descendantsOf, getProjection, hiddenByCollapse, outlineNumbers, withDepth, type FlatItem } from "../tree";
 
 const INDENT = 18;
@@ -59,7 +60,8 @@ function Row(props: {
   onToggle(): void;
   onOpenNews(): void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.item.id });
+  const readOnly = useReadOnly();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.item.id, disabled: readOnly });
   const news = props.news;
   const count = news ? new Set([...news.own, ...news.nested].map((n) => n.id)).size : 0;
   const stop = (e: MouseEvent) => e.stopPropagation();

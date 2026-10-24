@@ -240,10 +240,12 @@ export const AuthorSchema = z.object({
   username: UsernameSchema,
   /** "assistant" for comments written by an AI assistant (e.g. through MCP). */
   kind: z.enum(["user", "assistant"]).optional(),
+  /** For agents: the user the agent works for. */
+  onBehalfOf: z.object({ username: z.string(), name: z.string() }).optional(),
 });
 export type Author = z.infer<typeof AuthorSchema>;
 
-export const UserProfileSchema = AuthorSchema.omit({ kind: true });
+export const UserProfileSchema = AuthorSchema.omit({ kind: true, onBehalfOf: true });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
 
 /** Someone who wrote in a project (comments, replies, resolutions, notifications), or the local user. */
@@ -253,7 +255,11 @@ export interface Participant {
   /** Most recent display name. */
   name: string;
   kind: "user" | "assistant";
-  /** The person using this Sourcebook (Settings → Profile); agents may not sign with this username. */
+  /** For agents: the user they work for. */
+  onBehalfOf?: { username: string; name: string };
+  /** A registered identity of this Sourcebook (user account or agent); its id cannot be used by anyone else. */
+  registered?: boolean;
+  /** Single-user mode: the person using this Sourcebook (agents may not sign with this username). */
   local?: boolean;
   /** Comments, replies, resolutions and notifications signed in the project. */
   contributions: number;
@@ -389,6 +395,8 @@ export interface ProjectSummary extends ProjectMeta {
   /** Latest modification of any file in the folder. */
   updatedAt: string;
   sections: number;
+  /** The requesting user's access (read: view and comment; write: also edit). */
+  access?: "read" | "write";
 }
 
 export const CreateProjectBodySchema = z.object({
@@ -439,13 +447,22 @@ export const NotificationSchema = z.object({
   summary: z.string(),
   /** Each target with its label when the notification was received (e.g. "§2.1#3 Markdown"). */
   targets: z.array(z.object({ blockId: IdSchema, subBlockId: IdSchema.optional(), commentId: IdSchema.optional(), note: z.string().optional(), label: z.string() })),
+  /** Whether the requesting user has read it (each user has their own read state). */
   read: z.boolean(),
 });
 export type Notification = z.infer<typeof NotificationSchema>;
 export type NotificationTarget = Notification["targets"][number];
 
+/** A stored notification: who has read it (usernames). Files written before multi-user have `read` instead. */
+export const StoredNotificationSchema = NotificationSchema.omit({ read: true }).extend({
+  readBy: z.array(z.string()).default([]),
+  /** Legacy (single user): read by everybody. */
+  read: z.boolean().optional(),
+});
+export type StoredNotification = z.infer<typeof StoredNotificationSchema>;
+
 /** Contents of a project's notifications.json (newest first). */
-export const NotificationsFileSchema = z.object({ version: z.literal(1), notifications: z.array(NotificationSchema) });
+export const NotificationsFileSchema = z.object({ version: z.literal(1), notifications: z.array(StoredNotificationSchema) });
 
 export const NotificationParamsSchema = z.object({ notificationId: IdSchema });
 
@@ -462,7 +479,7 @@ export type ReloadRequestBody = z.infer<typeof ReloadRequestBodySchema>;
 
 /** Change notification streamed to open editors (Server-Sent Events). */
 export interface NotebookEvent {
-  type: "blocks" | "block" | "subblock" | "comments" | "references" | "bibliography" | "notifications" | "reload";
+  type: "blocks" | "block" | "subblock" | "comments" | "references" | "bibliography" | "notifications" | "reload" | "locks";
   blockId?: string;
   subBlockId?: string;
   /** New content revision (subblock events). */
@@ -495,10 +512,127 @@ export type UpdateMcpSettingsBody = z.infer<typeof UpdateMcpSettingsBodySchema>;
 /** Settings plus what an LLM client needs to connect (computed by the server). */
 export interface McpSettingsView extends McpSettings {
   connection: {
-    http: { url: string };
+    http: { url: string; headers?: Record<string, string> };
     stdio: { command: string; args: string[]; cwd: string; env: Record<string, string> };
   };
 }
 
 /** Header sent by the MCP server with every API call ("stdio" | "http"), used to apply the settings. */
 export const MCP_TRANSPORT_HEADER = "x-sourcebook-mcp-transport";
+
+// ---- Accounts, access, agents, locks (multi-user) ----
+
+export const RoleSchema = z.enum(["owner", "member"]);
+export type Role = z.infer<typeof RoleSchema>;
+export const PasswordSchema = z.string().min(8, "At least 8 characters").max(200);
+export const AccessLevelSchema = z.enum(["read", "write"]);
+/** read: view and comment; write: also change the content. */
+export type AccessLevel = z.infer<typeof AccessLevelSchema>;
+
+/** A user account as the API shows it (never the password hash). The username is the account id. */
+export interface AccountView {
+  username: string;
+  name: string;
+  role: Role;
+  /** May create projects and templates (always true for the owner). */
+  canCreateProjects: boolean;
+  disabled: boolean;
+  mustChangePassword: boolean;
+  createdAt: string;
+}
+
+export const LoginBodySchema = z.object({ username: z.string().trim().min(1).max(100), password: z.string().min(1).max(200) });
+export const ChangePasswordBodySchema = z.object({ currentPassword: z.string().max(200), newPassword: PasswordSchema });
+export const CreateUserBodySchema = z.object({
+  username: UsernameSchema,
+  name: z.string().trim().min(1, "Name is required").max(100),
+  /** Temporary password: the user must change it at the first login. */
+  password: PasswordSchema,
+  role: RoleSchema.default("member"),
+  canCreateProjects: z.boolean().default(false),
+});
+export type CreateUserBody = z.input<typeof CreateUserBodySchema>;
+export const UpdateUserBodySchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  role: RoleSchema.optional(),
+  canCreateProjects: z.boolean().optional(),
+  disabled: z.boolean().optional(),
+  /** Resets the password (temporary: must be changed at the next login). */
+  password: PasswordSchema.optional(),
+});
+export type UpdateUserBody = z.infer<typeof UpdateUserBodySchema>;
+
+/** Who may open a project/template, by username (the owner always may). */
+export interface ProjectAccess {
+  kind: NotebookKind;
+  id: string;
+  name: string;
+  access: Record<string, AccessLevel>;
+}
+/** username → level, or null to remove the access. */
+export const SetAccessBodySchema = z.object({ access: z.record(z.string(), AccessLevelSchema.nullable()) });
+export type SetAccessBody = z.infer<typeof SetAccessBodySchema>;
+
+/**
+ * An AI agent identity registered by a user: it signs with its own id and name, on behalf of that user. Agents
+ * connect with their user's access token and name themselves on each call (`agent`); one is the user's default.
+ */
+export interface AgentView {
+  id: string;
+  name: string;
+  /** Username of the user it works for. */
+  owner: string;
+  ownerName: string;
+  /** Used when a call through the user's token names no agent. */
+  default: boolean;
+  /** Agents of earlier versions had a token of their own: its first characters. */
+  tokenPrefix?: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revoked: boolean;
+}
+
+/** What an agent left in the projects, removed when it is deleted for good. */
+export interface AgentFootprint {
+  agent: string;
+  projects: { kind: NotebookKind; id: string; name: string; threads: number; replies: number; resolutions: number; notifications: number; locks: number }[];
+  total: { threads: number; replies: number; resolutions: number; notifications: number; locks: number };
+}
+
+/** A user's personal access token: one MCP configuration for all their agents (and scripts). */
+export interface AccessTokenView {
+  id: string;
+  /** What it is for, e.g. "Laptop – Claude Code". */
+  label: string;
+  owner: string;
+  ownerName: string;
+  /** First characters of the token, to recognize it. */
+  prefix: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revoked: boolean;
+}
+export const CreateAccessTokenBodySchema = z.object({ label: z.string().trim().min(1, "Label is required").max(100) });
+
+/** Header naming the agent acting in a call made with a user's access token. */
+export const AGENT_HEADER = "x-sourcebook-agent";
+export const CreateAgentBodySchema = z.object({ id: UsernameSchema, name: z.string().trim().min(1, "Name is required").max(100) });
+export type CreateAgentBody = z.infer<typeof CreateAgentBodySchema>;
+
+/** The signed-in principal: a user, or an agent working for one. */
+export interface Me {
+  user: AccountView;
+  agent?: AgentView;
+  /** How this principal signs comments and notifications. */
+  author: Author;
+  /** How the request authenticated: web session, personal access token, or an agent's own token (older versions). */
+  via?: "session" | "token" | "agent-token";
+}
+
+/** A sub-block taken by someone: others cannot change or delete it until it is released. */
+export interface SubBlockLock {
+  blockId: string;
+  subBlockId: string;
+  holder: Author;
+  since: string;
+}

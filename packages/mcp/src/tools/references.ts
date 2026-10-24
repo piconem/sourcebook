@@ -8,7 +8,7 @@ import {
 } from "@sourcebook/shared";
 import { z } from "zod";
 import { projectLabel } from "../refs.js";
-import { READ, WRITE, agentParam, projectParam, run, runContent, type ToolContext } from "./common.js";
+import { READ, WRITE, projectParam, run, runContent, type ToolContext } from "./common.js";
 
 /** Characters of text returned per call (the rest is available with `parts`). */
 const MAX_TEXT = 200_000;
@@ -201,7 +201,7 @@ export function registerReferenceFigureTool({ server, api, open }: ToolContext) 
   );
 }
 
-export function registerReferenceWriteTools({ server, api, open, as }: ToolContext) {
+export function registerReferenceWriteTools({ server, api, open, author }: ToolContext) {
   server.registerTool(
     "move_references",
     {
@@ -236,12 +236,10 @@ export function registerReferenceWriteTools({ server, api, open, as }: ToolConte
         path: pathParam,
         page: z.number().int().positive().describe("Page (or slide/sheet) number"),
         markdown: z.string().min(1).describe("Faithful transcription of the page (tables as Markdown tables, formulas in LaTeX, figures described briefly)"),
-        agent: agentParam,
       },
       annotations: { ...WRITE, idempotentHint: true },
     },
-    run(async ({ project, path, page, markdown, agent }) => {
-      const author = as(agent);
+    run(async ({ project, path, page, markdown }) => {
       const nb = await open(project);
       const clean = cleanPath(path);
       await api.json("PUT", `${nb.base}/references/mcp/transcription`, { path: clean, page, markdown, by: author.name });

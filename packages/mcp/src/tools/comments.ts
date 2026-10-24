@@ -2,16 +2,17 @@ import type { CommentView } from "@sourcebook/shared";
 import { z } from "zod";
 import type { NotebookView } from "../notebook.js";
 import { RefError, parseRef, type LineRange } from "../refs.js";
-import { DESTRUCTIVE, WRITE, agentParam, projectParam, refParam, run, type ToolContext } from "./common.js";
+import { DESTRUCTIVE, WRITE, projectParam, refParam, run, signature, type ToolContext } from "./common.js";
 
 /** Anchor for the API from lines (source lines of the file) or a quote. */
 async function anchorFor(nb: NotebookView, subblock: string, lines?: LineRange, quote?: string) {
   const r = await nb.resolveSubBlock(subblock);
   const range = lines ?? r.lines;
   if (range && quote) throw new RefError("Pass either lines or quote, not both.");
-  const unit = r.ref.type === "code" ? "lines" : "text";
+  // Code and data sets (CSV rows) are commented by whole lines; Markdown by any piece of text.
+  const unit = r.ref.type === "code" || r.ref.type === "csv" ? "lines" : "text";
   const anchor = range ? { lines: range } : quote ? { unit, exact: quote } : undefined;
-  if (anchor && !["markdown", "code"].includes(r.ref.type)) {
+  if (anchor && !["markdown", "code", "csv"].includes(r.ref.type)) {
     throw new RefError(`${r.ref.type} sub-blocks only take comments on the whole sub-block (omit lines/quote).`);
   }
   return { r, anchor };
@@ -19,7 +20,7 @@ async function anchorFor(nb: NotebookView, subblock: string, lines?: LineRange, 
 
 const commentRef = z.string().describe('Comment or reply id (shown as [comment <id>] by list_comments), or "§2.1#3!c<id>"');
 
-export function registerCommentTools({ server, api, open, as }: ToolContext) {
+export function registerCommentTools({ server, api, open, author }: ToolContext) {
   const whereOf = (nb: NotebookView, entry: Parameters<NotebookView["formatComment"]>[0], index: number, c: CommentView) =>
     nb.formatComment(entry, index, c).split("\n")[0];
 
@@ -28,23 +29,21 @@ export function registerCommentTools({ server, api, open, as }: ToolContext) {
     {
       title: "Comment",
       description:
-        "Adds a comment (signed by you, or by `agent`) to a sub-block: on the whole sub-block, on source lines (lines, or a reference like §2.1#3:L4-6) or on a quoted piece of text (quote). Lines of Markdown sub-blocks are lines of the .md source as shown by read_subblock.",
+        "Adds a comment (signed with your agent identity, see whoami) to a sub-block: on the whole sub-block, on source lines (lines, or a reference like §2.1#3:L4-6) or on a quoted piece of text (quote). Lines of Markdown sub-blocks are lines of the .md source as shown by read_subblock.",
       inputSchema: {
         project: projectParam,
         subblock: refParam("Sub-block (optionally with :Lx-y)"),
         text: z.string().min(1).max(10000),
         lines: z.object({ first: z.number().int().min(1), last: z.number().int().min(1) }).optional(),
         quote: z.string().min(1).max(5000).optional().describe("Exact text to attach the comment to"),
-        agent: agentParam,
       },
       annotations: WRITE,
     },
-    run(async ({ project, subblock, text, lines, quote, agent }) => {
-      const author = as(agent);
+    run(async ({ project, subblock, text, lines, quote }) => {
       const nb = await open(project);
       const { r, anchor } = await anchorFor(nb, subblock, lines, quote);
       const c = await api.json<CommentView>("POST", `${nb.base}/blocks/${r.entry.id}/subblocks/${r.ref.id}/comments`, { text, author, ...(anchor ? { anchor } : {}) });
-      return `Added ${whereOf(nb, r.entry, r.index, c)} as ${author.name} (@${author.username}).`;
+      return `Added ${whereOf(nb, r.entry, r.index, c)} as ${signature(c.author)}.`;
     }),
   );
 
@@ -52,12 +51,11 @@ export function registerCommentTools({ server, api, open, as }: ToolContext) {
     "reply_to_comment",
     {
       title: "Reply to a comment",
-      description: "Replies (signed by you, or by `agent`) to a comment thread.",
-      inputSchema: { project: projectParam, comment: commentRef, text: z.string().min(1).max(10000), agent: agentParam },
+      description: "Replies (signed with your agent identity) to a comment thread.",
+      inputSchema: { project: projectParam, comment: commentRef, text: z.string().min(1).max(10000) },
       annotations: WRITE,
     },
-    run(async ({ project, comment, text, agent }) => {
-      const author = as(agent);
+    run(async ({ project, comment, text }) => {
       const nb = await open(project);
       const found = await resolveComment(nb, comment);
       await api.json("POST", `${nb.base}/blocks/${found.entry.id}/subblocks/${found.ref.id}/comments/${found.comment.id}/replies`, { text, author });
@@ -94,11 +92,10 @@ export function registerCommentTools({ server, api, open, as }: ToolContext) {
     {
       title: "Resolve a comment thread",
       description: "Marks a comment thread as resolved (nothing left to do), e.g. after making the change it asked for; reopen=true opens it again.",
-      inputSchema: { project: projectParam, comment: commentRef, reopen: z.boolean().optional(), agent: agentParam },
+      inputSchema: { project: projectParam, comment: commentRef, reopen: z.boolean().optional() },
       annotations: WRITE,
     },
-    run(async ({ project, comment, reopen, agent }) => {
-      const author = as(agent);
+    run(async ({ project, comment, reopen }) => {
       const nb = await open(project);
       const found = await resolveComment(nb, comment);
       const url = `${nb.base}/blocks/${found.entry.id}/subblocks/${found.ref.id}/comments/${found.comment.id}`;

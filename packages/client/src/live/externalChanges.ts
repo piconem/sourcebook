@@ -52,6 +52,10 @@ export function subscribeProjectEvents(qc: QueryClient, changes: ExternalChanges
       void qc.invalidateQueries({ queryKey: keys.notifications });
       return;
     }
+    if (ev.type === "locks") {
+      void qc.invalidateQueries({ queryKey: keys.locks });
+      return;
+    }
     if (ev.type === "reload") {
       void qc.invalidateQueries({ queryKey: keys.notifications });
       onReload?.(ev);

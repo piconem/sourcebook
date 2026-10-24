@@ -133,7 +133,7 @@ describe("sub-block comments", () => {
 });
 
 describe("top bar settings", () => {
-  it("edits name and username, validating the username", async () => {
+  it("edits the name; the username is the account id and is shown, not edited", async () => {
     vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
     await render(
       <AppearanceProvider>
@@ -147,17 +147,16 @@ describe("top bar settings", () => {
     await click(button("User menu"));
     await click($$("[role=menuitem]").find((b) => b.textContent?.startsWith("Settings"))!);
     const dialog = $(".dialog[open]");
-    const [name, username] = $$("input", dialog) as HTMLInputElement[];
-    expect([name.value, username.value]).toEqual(["Mario Rossi", "mariorossi"]);
+    const [name] = $$(".settings-fields input", dialog) as HTMLInputElement[];
+    expect(name.value).toBe("Mario Rossi");
+    expect(dialog.textContent).toContain("@mariorossi");
+    expect((button("Save", dialog) as HTMLButtonElement).disabled).toBe(true); // nothing changed
 
-    await type(username, "Not Valid");
-    expect(dialog.textContent).toMatch(/lower-case letters/);
+    await type(name, " ");
     expect((button("Save", dialog) as HTMLButtonElement).disabled).toBe(true);
-
     await type(name, "Giulia Verdi");
-    await type(username, "giuliav");
     await click(button("Save", dialog));
-    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ name: "Giulia Verdi", username: "giuliav" });
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({ name: "Giulia Verdi", username: "mariorossi" });
     expect($(".topbar .avatar").textContent).toBe("GV");
   });
 });

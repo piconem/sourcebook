@@ -2,6 +2,7 @@ import {
   choiceType,
   citedKeys,
   questionType,
+  csvType,
   linkedReferences,
   outlineNumbers,
   withDepth,
@@ -23,7 +24,7 @@ export type Resolved =
   | { kind: "comment"; entry: Entry; ref: SubBlockRef; index: number; comment: CommentView; replyId?: string };
 
 /** Types whose content is plain source text the assistant can read and write. */
-export const TEXT_TYPES = ["markdown", "code", "mermaid", "equation", "question", "choice"] as const;
+export const TEXT_TYPES = ["markdown", "code", "mermaid", "equation", "question", "choice", "csv"] as const;
 export type TextType = (typeof TEXT_TYPES)[number];
 
 /** Source text of a sub-block (what line numbers and text edits refer to), or null for non-text types. */
@@ -41,6 +42,8 @@ export function sourceText(sub: { type: string; content: unknown }): string | nu
       return questionType.serialize(c as never).source;
     case "choice":
       return choiceType.serialize(c as never).source;
+    case "csv":
+      return String(c.csv ?? "");
     default:
       return null;
   }
@@ -59,6 +62,12 @@ export function contentFor(type: string, text: string, opts: { language?: string
       return { latex: text };
     case "question":
       return questionType.deserialize(text);
+    case "csv": {
+      // Keep the data set's delimiter unless the new text clearly uses another one.
+      const sniffed = csvType.deserialize(text);
+      const existing = (opts.existing as { delimiter?: string } | undefined)?.delimiter;
+      return existing && text.split("\n", 1)[0].includes(existing) ? { csv: text, delimiter: existing } : sniffed;
+    }
     case "choice":
       try {
         return choiceType.deserialize(text);

@@ -991,6 +991,41 @@ export class NotebookStore {
     });
   }
 
+  /**
+   * Removes everything `username` wrote in comments: their threads (with the replies), their replies in other
+   * threads, and their resolutions (those threads reopen). `dryRun` only counts.
+   */
+  purgeCommentsOf(username: string, dryRun = false): Promise<{ threads: number; replies: number; resolutions: number }> {
+    return this.mutex.run(async () => {
+      const count = { threads: 0, replies: 0, resolutions: 0 };
+      for (const entry of this.index.blocks) {
+        for (const ref of this.meta(entry.id).subBlocks) {
+          const file = await this.readComments(entry.folder, ref);
+          if (!file.comments.length) continue;
+          const before = { ...count };
+          const kept = file.comments.filter((c) => c.author.username !== username);
+          count.threads += file.comments.length - kept.length;
+          for (const c of kept) {
+            const replies = c.replies.filter((r) => r.author.username !== username);
+            count.replies += c.replies.length - replies.length;
+            c.replies = replies;
+            if (c.resolution?.by.username === username) {
+              count.resolutions++;
+              delete c.resolution;
+            }
+          }
+          const changed = count.threads !== before.threads || count.replies !== before.replies || count.resolutions !== before.resolutions;
+          if (changed && !dryRun) {
+            file.comments = kept;
+            await this.writeComments(entry.folder, ref, file);
+            this.notify({ type: "comments", blockId: entry.id, subBlockId: ref.id });
+          }
+        }
+      }
+      return count;
+    });
+  }
+
   /** Resolves a thread (author = who resolved it) or, with null, reopens it. */
   setCommentResolution(blockId: string, subBlockId: string, commentId: string, by: Author | null): Promise<CommentView> {
     return this.mutex.run(async () => {

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @sourcebook/server --filter @sourcebook/client dev",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm --filter @sourcebook/client build",
+    "start": "pnpm build && pnpm --filter @sourcebook/server start"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

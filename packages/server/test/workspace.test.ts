@@ -8,7 +8,7 @@ import { ls, tempProject } from "./helpers.js";
 async function setup() {
   const workspace = await tempProject();
   const configDir = await tempProject();
-  const { app } = await buildApp(workspace, { configDir });
+  const { app } = await buildApp(workspace, { auth: false, configDir });
   const call = async (method: string, url: string, payload?: object) => {
     const res = await app.inject({ method: method as "GET", url, payload: payload as Record<string, unknown> });
     return { status: res.statusCode, body: res.headers["content-type"]?.toString().includes("json") ? res.json() : res.body };

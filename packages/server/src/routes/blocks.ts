@@ -8,6 +8,7 @@ import {
 } from "@sourcebook/shared";
 import { normalize } from "node:path";
 import { badRequest } from "../errors.js";
+import { subBlocksUnder } from "./subblocks.js";
 
 export const blockRoutes =
   (): FastifyPluginAsyncZod =>
@@ -37,7 +38,11 @@ export const blockRoutes =
     );
 
     app.delete("/blocks/:id", { schema: { params: BlockIdParamsSchema } }, async (req, reply) => {
+      // A section holding sub-blocks locked by someone else cannot be deleted.
+      const subBlocks = subBlocksUnder(req, req.params.id);
+      await req.nb.locks.assertFree(subBlocks, req.principal.author);
       await req.nb.store.deleteBlock(req.params.id);
+      await req.nb.locks.drop(subBlocks);
       reply.code(204);
     });
 

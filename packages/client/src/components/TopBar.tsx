@@ -10,6 +10,7 @@ import { SettingsDialog } from "./SettingsDialog";
 import { PopoverMenu } from "./PopoverMenu";
 import { AboutDialog, releaseLabel } from "./AboutDialog";
 import { APP_NAME, APP_VERSION } from "@sourcebook/shared";
+import { useAuth } from "../auth/AuthContext";
 
 export function TopBar(props: {
   /** Shown in the editor: "Projects › <name>" / "Templates › <name>". */
@@ -25,6 +26,7 @@ export function TopBar(props: {
   const [settings, setSettings] = useState(false);
   const [appearance, setAppearance] = useState(false);
   const [about, setAbout] = useState(false);
+  const auth = useAuth();
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -76,14 +78,17 @@ export function TopBar(props: {
                 <Avatar name={user.name} username={user.username} size={36} />
                 <span className="user-menu-who">
                   <strong>{user.name}</strong>
-                  <span className="muted small">@{user.username}</span>
+                  <span className="muted small">
+                    @{user.username}
+                    {auth?.me.user.role === "owner" ? " · owner" : ""}
+                  </span>
                 </span>
               </div>
             )}
             <button role="menuitem" className="popover-item" onClick={() => (close(), setSettings(true))}>
               <span className="popover-item-text">
                 <strong>Settings…</strong>
-                <span className="muted small">Profile, AI assistant (MCP)</span>
+                <span className="muted small">{auth?.me.user.role === "owner" ? "Account, agents, users and access" : "Account, my agents, AI assistant"}</span>
               </span>
             </button>
             <button role="menuitem" className="popover-item" onClick={() => (close(), setAbout(true))}>
@@ -92,6 +97,13 @@ export function TopBar(props: {
                 <span className="muted small">Version {APP_VERSION} · {releaseLabel()}</span>
               </span>
             </button>
+            {auth && (
+              <button role="menuitem" className="popover-item" onClick={() => (close(), void auth.signOut())}>
+                <span className="popover-item-text">
+                  <strong>Sign out</strong>
+                </span>
+              </button>
+            )}
           </>
         )}
       </PopoverMenu>

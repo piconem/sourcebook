@@ -8,7 +8,7 @@ import { PNG_B64, tempProject } from "./helpers.js";
 
 async function setup() {
   const workspace = await tempProject();
-  const { app } = await buildApp(workspace, { configDir: await tempProject() });
+  const { app } = await buildApp(workspace, { auth: false, configDir: await tempProject() });
   const call = async (method: string, url: string, payload?: object) => {
     const res = await app.inject({ method: method as "GET", url, payload: payload as Record<string, unknown> });
     return { status: res.statusCode, body: res.headers["content-type"]?.toString().includes("json") ? res.json() : res.rawPayload };

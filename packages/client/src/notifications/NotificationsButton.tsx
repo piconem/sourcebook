@@ -37,6 +37,7 @@ export function NotificationItem(props: {
         <span className="notif-who">
           {n.author.name}
           {n.author.kind === "assistant" && <span className="badge-ai" title="Sent by an AI assistant">AI</span>}
+          {n.author.onBehalfOf && <span className="author-for"> · for {n.author.onBehalfOf.name}</span>}
         </span>
         <time className="muted small" dateTime={n.createdAt} title={fullTime(n.createdAt)}>
           {relativeTime(n.createdAt)}

@@ -1,15 +1,32 @@
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import { parseArgs } from "node:util";
 import { buildApp } from "./app.js";
+import { loadConfig } from "./config.js";
 
-const { values } = parseArgs({
-  options: { workspace: { type: "string" }, port: { type: "string" } },
+// Command-line options, then environment variables (see config.ts).
+const config = loadConfig();
+
+const { app, accounts, initialAdminPassword, seededTemplates } = await buildApp(config.workspace, {
+  logger: true,
+  port: config.port,
+  basePath: config.basePath,
+  publicUrl: config.publicUrl,
+  adminPassword: config.adminPassword,
+  trustProxy: config.trustProxy,
+  seedTemplates: true,
 });
-// Folder holding projects/ and templates/.
-const workspaceDir = resolve(values.workspace ?? process.env.SOURCEBOOK_WORKSPACE ?? join(homedir(), "Sourcebook"));
-const port = Number(values.port ?? process.env.PORT ?? 4000);
-
-const { app } = await buildApp(workspaceDir, { logger: true, port });
-await app.listen({ port, host: "127.0.0.1" });
-app.log.info(`Sourcebook workspace: ${workspaceDir}`);
+await app.listen({ port: config.port, host: config.host });
+app.log.info(`Sourcebook workspace: ${config.workspace}`);
+app.log.info(`Sourcebook is at ${config.publicUrl}/`);
+if (seededTemplates.length) app.log.info(`Templates added to the workspace: ${seededTemplates.join(", ")}`);
+if (initialAdminPassword) {
+  // Shown once: only its hash is stored. It must be changed at the first sign-in.
+  console.log(
+    [
+      "",
+      "  First start: owner account created",
+      `    username: ${accounts.owner().username}`,
+      `    password: ${initialAdminPassword}`,
+      "  Sign in and choose a new password (SOURCEBOOK_ADMIN_PASSWORD sets it instead of generating one).",
+      "",
+    ].join("\n"),
+  );
+}

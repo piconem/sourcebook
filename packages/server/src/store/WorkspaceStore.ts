@@ -22,6 +22,7 @@ import { NOTEBOOK_FILE, NotebookStore } from "./NotebookStore.js";
 import { BibliographyStore } from "./BibliographyStore.js";
 import { ReferencesStore } from "./ReferencesStore.js";
 import { NOTIFICATIONS_FILE, NotificationStore } from "./NotificationStore.js";
+import { LOCKS_FILE, LockStore } from "./LockStore.js";
 import { validateTemplateArchive, type ArchiveValidation } from "./templateArchive.js";
 
 export const KINDS: NotebookKind[] = ["projects", "templates"];
@@ -34,10 +35,11 @@ export interface NotebookContext {
   refs: ReferencesStore;
   bib: BibliographyStore;
   notifications: NotificationStore;
+  locks: LockStore;
 }
 
-/** Not carried over when a project/template is copied or archived: comments and received notifications. */
-const isPrivateFile = (path: string) => path.endsWith(".comments.json") || basename(path) === NOTIFICATIONS_FILE;
+/** Not carried over when a project/template is copied or archived: comments, received notifications, locks. */
+const isPrivateFile = (path: string) => path.endsWith(".comments.json") || basename(path) === NOTIFICATIONS_FILE || basename(path) === LOCKS_FILE;
 
 async function latestMtime(dir: string): Promise<number> {
   let latest = (await stat(dir)).mtimeMs;
@@ -225,7 +227,7 @@ export class WorkspaceStore {
         store.displayName = (await this.meta(kind, id)).name;
         const refs = new ReferencesStore(dir);
         refs.onChange = () => store.notify({ type: "references" });
-        return { kind, id, store, refs, bib: new BibliographyStore(dir, store), notifications: new NotificationStore(dir, store) };
+        return { kind, id, store, refs, bib: new BibliographyStore(dir, store), notifications: new NotificationStore(dir, store), locks: new LockStore(dir, store) };
       })();
       this.open_.set(key, ctx);
       ctx.catch(() => this.open_.delete(key));

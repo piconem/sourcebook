@@ -9,6 +9,7 @@ import {
   type ChangeTarget,
   type Notification,
   type NotificationTarget,
+  type StoredNotification,
 } from "@sourcebook/shared";
 import { badRequest, notFound } from "../errors.js";
 import { readJson, writeJsonAtomic } from "../fs/atomic.js";
@@ -35,18 +36,25 @@ export class NotificationStore {
     this.file = join(root, NOTIFICATIONS_FILE);
   }
 
-  private async read(): Promise<Notification[]> {
+  private async read(): Promise<StoredNotification[]> {
     if (!existsSync(this.file)) return [];
     const parsed = NotificationsFileSchema.safeParse(await readJson(this.file).catch(() => null));
     return parsed.success ? parsed.data.notifications : [];
   }
 
-  private write(list: Notification[]) {
+  private write(list: StoredNotification[]) {
     return writeJsonAtomic(this.file, { version: 1, notifications: list.slice(0, MAX_NOTIFICATIONS) });
   }
 
-  list(): Promise<Notification[]> {
-    return this.read();
+  /** As `reader` sees it: read state is per user (legacy single-user files: `read` counts for everybody). */
+  private view(n: StoredNotification, reader: string): Notification {
+    const { readBy, read, ...rest } = n;
+    return { ...rest, read: !!read || readBy.includes(reader) };
+  }
+
+  /** Notifications as `reader` (username) sees them, newest first. */
+  async list(reader: string): Promise<Notification[]> {
+    return (await this.read()).map((n) => this.view(n, reader));
   }
 
   /** Checks every target exists and records its current label ("§2.1 Title", "§2.1#3 Markdown", …). */
@@ -78,29 +86,42 @@ export class NotificationStore {
 
   add(author: Author, summary: string, targets: ChangeTarget[]): Promise<Notification> {
     return this.mutex.run(async () => {
-      const n: Notification = {
+      const n: StoredNotification = {
         id: nanoid(10),
         createdAt: new Date().toISOString(),
         author,
         summary,
         targets: await this.labelled(targets),
-        read: false,
+        readBy: [],
       };
       await this.write([n, ...(await this.read())]);
       this.store.notify({ type: "notifications" });
-      return n;
+      return this.view(n, author.username);
     });
   }
 
-  /** Marks one notification (or, without id, all of them) as read. */
-  markRead(id?: string): Promise<Notification[]> {
+  /** Marks one notification (or, without id, all of them) as read by `reader`. */
+  markRead(reader: string, id?: string): Promise<Notification[]> {
     return this.mutex.run(async () => {
       const list = await this.read();
       if (id && !list.some((n) => n.id === id)) throw notFound(`Notification ${id}`);
-      for (const n of list) if (!id || n.id === id) n.read = true;
+      for (const n of list) if ((!id || n.id === id) && !n.readBy.includes(reader)) n.readBy.push(reader);
       await this.write(list);
       this.store.notify({ type: "notifications" });
-      return list;
+      return list.map((n) => this.view(n, reader));
+    });
+  }
+
+  /** Removes the notifications sent by `username` (`dryRun`: only counts). */
+  purgeFrom(username: string, dryRun = false): Promise<number> {
+    return this.mutex.run(async () => {
+      const list = await this.read();
+      const kept = list.filter((n) => n.author.username !== username);
+      if (kept.length !== list.length && !dryRun) {
+        await this.write(kept);
+        this.store.notify({ type: "notifications" });
+      }
+      return list.length - kept.length;
     });
   }
 
@@ -112,10 +133,13 @@ export class NotificationStore {
     });
   }
 
-  /** Asks open editors to reload; the notifications describing the changes default to the unread ones. */
+  /**
+   * Asks open editors to reload; the notifications describing the changes default to those nobody has read
+   * (each editor shows the ones its user has not read).
+   */
   async requestReload(author: Author, message?: string, notificationIds?: string[]): Promise<{ notificationIds: string[] }> {
     const list = await this.read();
-    const ids = notificationIds ?? list.filter((n) => !n.read).map((n) => n.id);
+    const ids = notificationIds ?? list.filter((n) => !n.read && !n.readBy.length).map((n) => n.id);
     const unknown = ids.filter((id) => !list.some((n) => n.id === id));
     if (unknown.length) throw badRequest(`Unknown notifications: ${unknown.join(", ")}`);
     this.store.notify({ type: "reload", author, ...(message ? { message } : {}), notificationIds: ids });
