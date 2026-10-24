@@ -1,13 +1,14 @@
 {
   "name": "sourcebook",
   "version": "0.2.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "pnpm --parallel --filter @sourcebook/server --filter @sourcebook/client dev",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm --filter @sourcebook/client build",
+    "build": "pnpm --filter @sourcebook/client build && node scripts/third-party-licenses.mjs",
     "start": "pnpm build && pnpm --filter @sourcebook/server start"
   },
   "devDependencies": {

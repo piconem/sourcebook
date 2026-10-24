@@ -1,6 +1,7 @@
 {
   "name": "@sourcebook/mcp",
   "version": "0.2.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "description": "MCP server exposing Sourcebook projects and templates to LLM assistants",

@@ -400,7 +400,7 @@ body.subblock-expanded-open { overflow: hidden; }
   padding: 0 14px 0 16px; background: var(--panel); border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; letter-spacing: .01em; color: var(--text); }
-.brand svg { color: var(--accent); }
+.brand-logo { width: auto; height: 28px; display: block; }
 .topbar-user { border: none; background: none; padding: 2px; border-radius: 50%; }
 .topbar-user:hover, .topbar-user:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft); }
 .avatar {
@@ -945,7 +945,8 @@ body.resizing-sidebar { cursor: col-resize; user-select: none; }
 .auth-loading { padding: 24px; }
 .auth-page { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; background: var(--bg); }
 .auth-card { width: min(380px, 100%); padding: 28px 28px 24px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 32px var(--shadow); }
-.auth-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--accent); margin-bottom: 12px; }
+.auth-logo { width: auto; height: 48px; display: block; }
 .auth-card h1 { font-size: 20px; margin: 0 0 16px; }
 .auth-form { display: flex; flex-direction: column; gap: 12px; }
 .auth-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }

@@ -24,7 +24,9 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
 COPY packages packages
-RUN pnpm --filter @sourcebook/client build
+COPY scripts/third-party-licenses.mjs scripts/
+# Web client + THIRD_PARTY_LICENSES.txt (licenses of every shipped library) in packages/client/dist
+RUN pnpm build
 
 # ---------------------------------------------------------------- prod: runtime dependencies of the server only
 FROM base AS prod
@@ -43,6 +45,7 @@ ARG CREATED=unknown
 LABEL org.opencontainers.image.title="Sourcebook" \
       org.opencontainers.image.description="Block-based notebook written together by people and AI assistants (MCP)" \
       org.opencontainers.image.source="https://github.com/piconem/sourcebook" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"
@@ -58,7 +61,7 @@ COPY --from=prod /app/node_modules node_modules
 COPY --from=prod /app/packages/shared/node_modules packages/shared/node_modules
 COPY --from=prod /app/packages/mcp/node_modules packages/mcp/node_modules
 COPY --from=prod /app/packages/server/node_modules packages/server/node_modules
-COPY package.json ./
+COPY package.json LICENSE ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/shared/src packages/shared/src
 COPY packages/mcp/package.json packages/mcp/

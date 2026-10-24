@@ -1,3 +1,5 @@
+[← Sourcebook](../README.md) · [Installation](installation.md) · [Docker](../docker/README.md) · [User guide](user-guide.md) · [Collaboration](collaboration.md) · [AI assistant](ai-assistant.md) · [REST API](rest-api.md) · [File format](file-format.md) · [Development](development.md) · [Libraries](libraries.md)
+
 # Implementation decisions (V1)
 
 Decisions taken while implementing `project-instructions.md`, beyond those already fixed there.

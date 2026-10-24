@@ -13,6 +13,7 @@ docker/data
 docs
 example-project
 scripts
+!scripts/third-party-licenses.mjs
 **/test
 **/*.test.ts
 **/*.test.tsx

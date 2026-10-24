@@ -1,17 +1,14 @@
 import { APP_NAME, APP_VERSION, PasswordSchema, type Me } from "@sourcebook/shared";
 import { useState, type FormEvent } from "react";
 import { api } from "../api/client";
+import logo from "../assets/logo.png";
 
 function AuthCard(props: { title: string; children: React.ReactNode }) {
   return (
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-brand">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5z" />
-            <path d="M4 21.5A2.5 2.5 0 0 1 6.5 19H20v3H6.5" />
-            <path d="M9 7h7M9 11h5" />
-          </svg>
+          <img className="auth-logo" src={logo} alt="" aria-hidden="true" />
           <span>{APP_NAME}</span>
         </div>
         <h1>{props.title}</h1>
