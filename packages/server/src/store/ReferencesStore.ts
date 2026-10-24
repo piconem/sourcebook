@@ -136,6 +136,39 @@ export class ReferencesStore {
   }
 
   /**
+   * Moves files/folders into `dir`, keeping their names; entries inside an already-selected folder move with it.
+   * Refuses (before moving anything) to overwrite or to move a folder inside itself. Returns what actually moved.
+   */
+  move(paths: string[], dir: string): Promise<{ from: string; to: string }[]> {
+    return this.mutex.run(async () => {
+      const target = validatePath(dir);
+      const absTarget = this.abs(target);
+      if (target && !(await stat(absTarget).catch(() => null))?.isDirectory()) throw notFound(`Folder ${target}`);
+      const rels = [...new Set(paths.map(validatePath))].sort();
+      if (rels.some((r) => !r)) throw badRequest("Cannot move the references folder");
+      const roots = rels.filter((r) => !rels.some((o) => o !== r && r.startsWith(`${o}/`)));
+      const moves: { from: string; to: string }[] = [];
+      const names = new Set<string>();
+      for (const from of roots) {
+        if (!existsSync(this.abs(from))) throw notFound(`Reference ${from}`);
+        if (target === from || target.startsWith(`${from}/`)) throw badRequest(`Cannot move "${from}" inside itself`);
+        const name = posix.basename(from);
+        const to = target ? `${target}/${name}` : name;
+        if (to === from) continue;
+        if (existsSync(this.abs(to)) || names.has(name)) throw new HttpError(409, `"${to}" already exists`);
+        names.add(name);
+        moves.push({ from, to });
+      }
+      for (const { from, to } of moves) {
+        await rename(this.abs(from), this.abs(to));
+        await this.mcp.move(from, to);
+      }
+      if (moves.length) this.onChange();
+      return moves;
+    });
+  }
+
+  /**
    * Resolves a selection into archive entries: files, plus folders expanded recursively (empty folders
    * kept as directory entries). Names are relative to `base` when inside it; duplicates are dropped.
    */

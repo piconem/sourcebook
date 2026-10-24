@@ -90,6 +90,27 @@ describe("references", () => {
     expect((await inject("DELETE", "/api/references?path=..")).statusCode).toBe(400);
   });
 
+  it("moves files and folders between folders without overwriting", async () => {
+    const { root, inject, upload } = await setup();
+    await upload("docs", [{ name: "a.txt", data: "a" }, { name: "b.txt", data: "b" }]);
+    await upload("archive", [{ name: "b.txt", data: "old" }]);
+    await inject("POST", "/api/references/folders", { path: "docs/sub" });
+    expect((await inject("POST", "/api/references/move", { paths: ["docs/a.txt"], dir: "archive" })).json()).toEqual({ moved: [{ from: "docs/a.txt", to: "archive/a.txt" }] });
+    expect(existsSync(join(root, "references", "archive", "a.txt"))).toBe(true);
+    expect(existsSync(join(root, "references", "docs", "a.txt"))).toBe(false);
+    // A clash refuses the whole move.
+    expect((await inject("POST", "/api/references/move", { paths: ["docs/b.txt"], dir: "archive" })).statusCode).toBe(409);
+    expect(existsSync(join(root, "references", "docs", "b.txt"))).toBe(true);
+    // Not inside itself, not into a missing folder; already there is a no-op.
+    expect((await inject("POST", "/api/references/move", { paths: ["docs"], dir: "docs/sub" })).statusCode).toBe(400);
+    expect((await inject("POST", "/api/references/move", { paths: ["docs/b.txt"], dir: "nope" })).statusCode).toBe(404);
+    expect((await inject("POST", "/api/references/move", { paths: ["docs/b.txt"], dir: "docs" })).json()).toEqual({ moved: [] });
+    // Folders move with their contents, to the root too ("archive" is already there).
+    expect((await inject("POST", "/api/references/move", { paths: ["docs/sub", "archive"], dir: "" })).json()).toEqual({ moved: [{ from: "docs/sub", to: "sub" }] });
+    expect((await inject("POST", "/api/references/move", { paths: ["archive"], dir: "docs" })).json()).toEqual({ moved: [{ from: "archive", to: "docs/archive" }] });
+    expect(existsSync(join(root, "references", "docs", "archive", "a.txt"))).toBe(true);
+  });
+
   it("renames without overwriting and deletes folders recursively", async () => {
     const { root, inject, upload } = await setup();
     await upload("docs", [{ name: "a.txt", data: "a" }, { name: "b.txt", data: "b" }]);

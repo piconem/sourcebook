@@ -38,6 +38,8 @@ beforeEach(() => {
     if (url === "/api/references/rename") return json({ path: `papers/${body.newName}` });
     if (url === "/api/references/folders") return json({ path: body.path }, 201);
     if (url === "/api/references/delete") return json({ deleted: body.paths });
+    if (url === "/api/references/move")
+      return json({ moved: body.paths.map((p: string) => ({ from: p, to: `${body.dir ? `${body.dir}/` : ""}${p.split("/").pop()}` })) });
     if (url === "/api/references/zip")
       return new Response(new Blob(["PK"]), { headers: { "content-type": "application/zip", "content-disposition": "attachment; filename*=UTF-8''papers.zip" } });
     return json({ error: "unexpected" }, 500);
@@ -114,6 +116,28 @@ describe("ReferencesBrowser", () => {
     await type(input, "spec.pdf");
     await fire(button("Rename", $(".dialog[open]")), "click");
     expect(calls.find((c) => c.url === "/api/references/rename")?.body).toEqual({ path: "papers/a.pdf", newName: "spec.pdf" });
+  });
+
+  it("moves the selection to another folder with Move to…", async () => {
+    await render();
+    await fire(card("notes.md"), "click");
+    await fire(card("report.docx"), "click", { ctrlKey: true });
+    await fire(button("Move to…", $(".ref-selection-bar")), "click");
+    const options = [...document.querySelectorAll(".dialog[open] .ref-move-list button")] as HTMLButtonElement[];
+    expect(options.map((o) => o.textContent?.replace("📁", "").trim())).toEqual(["references", "papers"]);
+    expect(options[0].disabled).toBe(true); // already there
+    await fire(options[1], "click");
+    await fire(button("Move here", $(".dialog[open]")), "click");
+    expect(calls.find((c) => c.url === "/api/references/move")?.body).toEqual({ paths: ["notes.md", "report.docx"], dir: "papers" });
+    expect($(".ref-status").textContent).toContain("Moved 2 items to references/papers");
+  });
+
+  it("does not offer moving a folder inside itself", async () => {
+    await render();
+    await fire(card("papers"), "contextmenu", { clientX: 50, clientY: 60 });
+    await fire(button("Move to…", $(".context-menu")), "click");
+    const options = [...document.querySelectorAll(".dialog[open] .ref-move-list button")] as HTMLButtonElement[];
+    expect(options.map((o) => o.disabled)).toEqual([true, true]);
   });
 
   it("creates folders, and deletes via the context menu after confirmation", async () => {

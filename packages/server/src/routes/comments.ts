@@ -10,12 +10,16 @@ import {
   SubBlockParamsSchema,
 } from "@sourcebook/shared";
 import type { UserStore } from "../store/UserStore.js";
+import { checkAuthor, listParticipants } from "../participants.js";
 
 const base = "/blocks/:blockId/subblocks/:subBlockId/comments";
 
 export const commentRoutes =
   (users: UserStore): FastifyPluginAsyncZod =>
   async (app) => {
+
+    /** Who signed comments and notifications in the project, plus the local user. */
+    app.get("/participants", async (req) => ({ participants: await listParticipants(req.nb, await users.get()) }));
 
     /** All threads of the project (document order); ?status=open|resolved|all. */
     app.get("/comments", { schema: { querystring: ProjectCommentsQuerySchema } }, async (req) => ({
@@ -27,6 +31,7 @@ export const commentRoutes =
     }));
 
     app.post(base, { schema: { params: SubBlockParamsSchema, body: CreateThreadBodySchema } }, async (req, reply) => {
+      if (req.body.author) await checkAuthor(req.nb, await users.get(), req.body.author);
       const author = req.body.author ?? (await users.get());
       reply.code(201);
       return req.nb.store.addComment(req.params.blockId, req.params.subBlockId, author, req.body.text, req.body.anchor);
@@ -47,6 +52,7 @@ export const commentRoutes =
       `${base}/:commentId/resolve`,
       { schema: { params: CommentParamsSchema, body: ResolveCommentBodySchema.nullish() } },
       async (req) => {
+        if (req.body?.author) await checkAuthor(req.nb, await users.get(), req.body.author);
         const author = req.body?.author ?? (await users.get());
         return req.nb.store.setCommentResolution(req.params.blockId, req.params.subBlockId, req.params.commentId, author);
       },
@@ -60,6 +66,7 @@ export const commentRoutes =
       `${base}/:commentId/replies`,
       { schema: { params: CommentParamsSchema, body: CreateCommentBodySchema } },
       async (req, reply) => {
+        if (req.body.author) await checkAuthor(req.nb, await users.get(), req.body.author);
         const author = req.body.author ?? (await users.get());
         reply.code(201);
         return req.nb.store.addReply(req.params.blockId, req.params.subBlockId, req.params.commentId, author, req.body.text);

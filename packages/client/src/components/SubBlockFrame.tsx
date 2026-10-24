@@ -16,6 +16,7 @@ import { citedKeys, linkedReferences } from "@sourcebook/shared";
 import { AttachmentsButton } from "../references/AttachmentsButton";
 import { ObjectiveField } from "./ObjectiveField";
 import { useDebouncedSaver } from "./useDebouncedSaver";
+import { NotificationBadge } from "../notifications/NotificationBadge";
 
 export function SubBlockFrame(props: {
   blockId: string;
@@ -203,6 +204,7 @@ export function SubBlockFrame(props: {
           }}
           onKeyDown={(e) => (e.key === "Enter" || e.key === "Escape") && (e.target as HTMLInputElement).blur()}
         />
+        <NotificationBadge blockId={blockId} subBlockId={subBlock.id} />
         <span className="file">{subBlock.source}</span>
         {flash && <span className="live-flash">{flash}</span>}
         <span className={`save ${state}`} title={error ?? undefined}>

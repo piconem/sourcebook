@@ -40,6 +40,18 @@ describe("reference files associated with sections and sub-blocks", () => {
     expect((await call("GET", `/api/blocks/${b.id}`)).body.references).toBeUndefined();
   });
 
+  it("moving a file to another folder moves its associations and Markdown links", async () => {
+    const { call, b, md } = await setup();
+    await call("PUT", `/api/blocks/${b.id}/references`, { paths: ["papers/My spec.pdf"] });
+    await call("POST", "/api/references/folders", { path: "archive" });
+    expect((await call("POST", "/api/references/move", { paths: ["papers/My spec.pdf"], dir: "archive" })).body).toEqual({
+      moved: [{ from: "papers/My spec.pdf", to: "archive/My spec.pdf" }],
+    });
+    const block = (await call("GET", `/api/blocks/${b.id}`)).body;
+    expect(block.references).toEqual(["archive/My spec.pdf"]);
+    expect(block.subBlocks.find((s: { id: string }) => s.id === md.id).content.markdown).toContain("(../../../references/archive/My%20spec.pdf)");
+  });
+
   it("renaming a folder moves associations and Markdown links; deleting drops associations", async () => {
     const { call, b, md } = await setup();
     await call("PUT", `/api/blocks/${b.id}/subblocks/${md.id}/references`, { paths: ["papers/My spec.pdf"] });

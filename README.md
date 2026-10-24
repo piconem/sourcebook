@@ -20,6 +20,14 @@ The workspace folder holds all projects and templates. Default `~/Sourcebook`; o
 `--workspace /path` (e.g. `pnpm --filter @sourcebook/server exec tsx src/index.ts --workspace /path`) or
 `SOURCEBOOK_WORKSPACE`. Missing folders are created automatically.
 
+**Version**: name, version and release date live in `packages/shared/src/version.ts` (shown in the user menu → About
+and reported by the MCP server); keep `version` in the `package.json` files in sync when releasing.
+
+**In the editor**: the outline on the left collapses sub-sections (arrow on each section, "Expand all / Collapse
+all", remembered per browser and project). In **References**, files and folders are moved by dragging them onto a
+folder or a breadcrumb, or with "Move to…" (links and attachments follow). The avatar at the top right opens the
+user menu: Settings and About (version, release date).
+
 ## Layout
 ```
 packages/shared   zod schemas, shared types, sub-block registry contract + core type definitions
@@ -105,12 +113,14 @@ All paths below are relative to `/api/projects/:projectId` or `/api/templates/:p
 | POST | `…/notifications` | `{ summary, targets: [{ blockId, subBlockId?, commentId?, note? }], author?, requestReload? }` — notifies the user of a change (targets: sections, sub-blocks or comments; 400 if one does not exist); `requestReload: true` also asks open editors to reload |
 | POST | `…/notifications/:id/read` · `…/notifications/read-all` | mark as read → `{ notifications }` |
 | DELETE | `…/notifications` | clear the list |
+| GET | `…/participants` | `{ participants: [{ username, name, kind, local?, contributions, lastActive? }] }` — who signed comments, replies, resolutions and notifications, plus the local user. An explicit `author` given to comments / notifications / reload requests is refused (409) when its username is the local user's, is used with another name, or its name is used by another username |
 | POST | `…/reload-request` | `{ message?, notificationIds?, author? }` — asks open editors to reload, listing those notifications (default: the unread ones) |
 | GET | `…/references` | tree of `references/`; each file has `mcp: { status, kind, unit?, parts?, pageImages?, figures?, imageOnlyParts?, error? }` (see below) and documents still to convert are queued |
 | GET | `…/references/file/*` | a reference, inline (`?download=1` to download) |
 | POST | `…/references/upload?dir=…` | multipart, one or more `file` fields (≤ 100 MB each) |
 | POST | `…/references/folders` | `{ path }` |
 | PATCH | `…/references/rename` | `{ path, newName }` |
+| POST | `…/references/move` | `{ paths, dir }` → `{ moved: [{ from, to }] }` — moves files/folders into folder `dir` (`""` = root), keeping names; links and associations follow; 409 on a name clash (nothing moved), 400 for a folder into itself |
 | DELETE | `…/references?path=…` | file or folder (recursive) |
 | POST | `…/references/zip` | `{ paths, base? }` → streamed ZIP (folders included recursively) |
 | POST | `…/references/delete` | `{ paths }` → `{ deleted }` — attachments of deleted files are removed |
@@ -143,7 +153,11 @@ source file — or `resolved: null` when the text is gone (detached).
 **Change notifications.** An application or script that changes a project tells the user what it did with one
 notification per group of changes (a short summary plus the sections, sub-blocks or comments involved). They appear
 in the bell menu at the top right of the editor (unread count, author, summary, links to each part); opening one
-marks it read, "Mark all as read" and "Clear" manage the list. At the end of a group of changes, a reload request
+marks it read, "Mark all as read" and "Clear" manage the list. Unread notifications are also marked where they
+apply: a bell on the section in the outline (on a collapsed parent for hidden sub-sections; clicking it goes to the
+changed part, again for the next one, without marking anything read) and a bell in the header of each changed
+sub-block — or of the section, for changes to the section as a whole — which marks them read. Notifications are
+marked read only from that bell or from the top-bar menu. At the end of a group of changes, a reload request
 shows the user a dialog with the message and those notifications, and offers to reload the page (pending edits are
 saved first).
 
@@ -191,8 +205,21 @@ Claude Desktop (`claude_desktop_config.json`):
 { "mcpServers": { "sourcebook": { "command": "pnpm", "args": ["--silent", "--dir", "/path/to/sourcebook", "--filter", "@sourcebook/mcp", "exec", "tsx", "src/stdio.ts"] } } }
 ```
 Environment: `SOURCEBOOK_URL` (stdio, default `http://127.0.0.1:4000`), `SOURCEBOOK_MCP_READONLY=1` (reading tools only),
-`SOURCEBOOK_MCP_AUTHOR_NAME` / `SOURCEBOOK_MCP_AUTHOR_USERNAME` (author of the assistant's comments, default
-"Claude (assistant)" / `claude`).
+`SOURCEBOOK_MCP_AGENT_ID` / `SOURCEBOOK_MCP_AGENT_NAME` (identity of the agent signing comments and notifications,
+default `claude` / "Claude (assistant)"; the older `SOURCEBOOK_MCP_AUTHOR_USERNAME` / `_NAME` still work).
+
+**Several agents on one project**: each agent signs its comments, replies, resolutions and notifications with its own
+id and name, so you can tell them apart. Either give each connection an identity — stdio: the environment variables
+above; HTTP: `http://127.0.0.1:4000/mcp?agent_id=reviewer&agent_name=Reviewer` (or the headers
+`x-sourcebook-agent-id` / `x-sourcebook-agent-name`) — or let agents sharing one connection pass
+`agent: {"id": "reviewer", "name": "Reviewer"}` to `add_comment`, `reply_to_comment`, `resolve_comment`,
+`notify_changes`, `request_reload` and `save_reference_transcription`. `whoami` tells an agent its current identity;
+`list_participants` lists who already signed in the project (people and agents, plus the local user). Identities that
+would be mistaken for someone else are refused (409): an id already used with another name, a name already used by
+another id, or the local user's username. The same id with the same name is the same agent continuing its work.
+```bash
+claude mcp add --transport http sourcebook-reviewer "http://127.0.0.1:4000/mcp?agent_id=reviewer&agent_name=Reviewer"
+```
 
 **Ask AI**: the ✨💬 button on the document, sections, sub-blocks, selected text/code lines, comment threads and
 reference files prepares a ready-to-paste request (brainstorming, critique, build/fill, improve/rewrite, comment, or
@@ -232,7 +259,8 @@ ids and `sourcebook://projects/<id>/subblocks/<id>` URIs.
 **Tools**: `list_workspace`, `get_outline`, `read_section`, `read_subblock`, `read_document`, `search`, `list_references`,
 `read_reference` (text as it is, images as images, documents as converted Markdown, by `parts`), `read_reference_pages`
 (PDF pages as images), `read_reference_figures` (figures cut out of PDFs, with captions), `list_comments` (open threads;
-`include_resolved` for all), `list_notifications` · `save_reference_transcription` · `create_project`, `create_template`, `create_section`, `add_subblock`,
+`include_resolved` for all), `list_notifications`, `whoami`, `list_participants` · `save_reference_transcription`, `move_references` (move files/folders between folders of
+References; links and associations follow) · `create_project`, `create_template`, `create_section`, `add_subblock`,
 `update_section`, `update_subblock`, `edit_subblock_text` (find/replace or line ranges, atomic), `move_section`,
 `move_subblock` · `add_image_from_reference` (an image file or a PDF figure as an image sub-block) · `add_comment`,
 `reply_to_comment`, `reanchor_comment`, `resolve_comment` · `notify_changes` (summary + parts involved, as

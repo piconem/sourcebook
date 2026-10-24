@@ -197,6 +197,9 @@ export const api = {
   createReferenceFolder: (path: string) => request<{ path: string }>("POST", `${nbBase}/references/folders`, { path }),
   renameReference: (path: string, newName: string) =>
     request<{ path: string }>("PATCH", `${nbBase}/references/rename`, { path, newName }),
+  /** Moves files/folders into `dir` ("" = the references root); links and associations follow. */
+  moveReferences: (paths: string[], dir: string) =>
+    request<{ moved: { from: string; to: string }[] }>("POST", `${nbBase}/references/move`, { paths, dir }),
   deleteReference: (path: string) => request<void>("DELETE", `${nbBase}/references?path=${encodeURIComponent(path)}`),
   // ---- images from references (image files, figures of documents) ----
   getReferenceImages: () => request<ReferenceImages>("GET", `${nbBase}/references/images`),

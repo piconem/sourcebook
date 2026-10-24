@@ -10,6 +10,7 @@ import {
   SubBlockParamsSchema,
   CreateReferenceFolderBodySchema,
   ReferencePathsBodySchema,
+  MoveReferencesBodySchema,
   ZipReferencesBodySchema,
   ReferencePathQuerySchema,
   RenameReferenceBodySchema,
@@ -182,6 +183,13 @@ export const referenceRoutes =
       const path = await req.nb.refs.rename(req.body.path, req.body.newName);
       if (path !== from) await req.nb.store.renameReferencePath(from, path);
       return { path };
+    });
+
+    // Moves carry associations and Markdown links along, like renames.
+    app.post("/references/move", { schema: { body: MoveReferencesBodySchema } }, async (req) => {
+      const moved = await req.nb.refs.move(req.body.paths, req.body.dir);
+      for (const { from, to } of moved) await req.nb.store.renameReferencePath(from, to);
+      return { moved };
     });
 
     /** Where a file (or anything inside a folder) is associated or linked. */

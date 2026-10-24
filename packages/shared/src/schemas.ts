@@ -217,6 +217,9 @@ export const ReferencePathsBodySchema = z.object({
   paths: z.array(ReferencePathSchema.min(1)).min(1).max(10_000),
 });
 
+/** Moves files/folders into another folder ("" = references/ itself), keeping their names. */
+export const MoveReferencesBodySchema = ReferencePathsBodySchema.extend({ dir: ReferencePathSchema.default("") });
+
 /** Reference files associated with a whole section or sub-block (replaces the list). */
 export const AttachReferencesBodySchema = z.object({ paths: z.array(ReferencePathSchema.min(1)).max(500) });
 
@@ -242,6 +245,21 @@ export type Author = z.infer<typeof AuthorSchema>;
 
 export const UserProfileSchema = AuthorSchema.omit({ kind: true });
 export type UserProfile = z.infer<typeof UserProfileSchema>;
+
+/** Someone who wrote in a project (comments, replies, resolutions, notifications), or the local user. */
+export interface Participant {
+  /** Identity: the username (an agent's id). */
+  username: string;
+  /** Most recent display name. */
+  name: string;
+  kind: "user" | "assistant";
+  /** The person using this Sourcebook (Settings → Profile); agents may not sign with this username. */
+  local?: boolean;
+  /** Comments, replies, resolutions and notifications signed in the project. */
+  contributions: number;
+  /** ISO time of the latest one. */
+  lastActive?: string;
+}
 
 /**
  * Where a comment points inside a text-based sub-block (W3C Web Annotation "text quote" style):

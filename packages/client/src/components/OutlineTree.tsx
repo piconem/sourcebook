@@ -12,16 +12,57 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@sourcebook/shared";
-import { useMemo, useState } from "react";
+import type { Notification, Project } from "@sourcebook/shared";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { api } from "../api/client";
-import { keys } from "../api/queries";
-import { applyDrop, descendantsOf, getProjection, outlineNumbers, withDepth, type FlatItem } from "../tree";
+import { keys, useNotifications } from "../api/queries";
+import { BellIcon } from "../notifications/NotificationsButton";
+import type { Target } from "../router";
+import { ancestorsOf, applyDrop, descendantsOf, getProjection, hiddenByCollapse, outlineNumbers, withDepth, type FlatItem } from "../tree";
 
 const INDENT = 18;
 
-function Row(props: { item: FlatItem; number: string; depth: number; selected: boolean; onSelect(): void }) {
+const storage = {
+  get(key: string): string[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(key) ?? "[]");
+      return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+    } catch {
+      return [];
+    }
+  },
+  set(key: string, ids: string[]) {
+    try {
+      localStorage.setItem(key, JSON.stringify(ids));
+    } catch {
+      // per-browser convenience only
+    }
+  },
+};
+
+/** Unread notifications about a section (or its sub-blocks / comments), and whether they are about it directly. */
+interface SectionNews {
+  own: Notification[];
+  /** In hidden sub-sections (the section is collapsed). */
+  nested: Notification[];
+}
+
+function Row(props: {
+  item: FlatItem;
+  number: string;
+  depth: number;
+  selected: boolean;
+  /** undefined: no sub-sections. */
+  collapsed?: boolean;
+  news?: SectionNews;
+  onSelect(): void;
+  onToggle(): void;
+  onOpenNews(): void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.item.id });
+  const news = props.news;
+  const count = news ? new Set([...news.own, ...news.nested].map((n) => n.id)).size : 0;
+  const stop = (e: MouseEvent) => e.stopPropagation();
   return (
     <li
       ref={setNodeRef}
@@ -31,13 +72,52 @@ function Row(props: { item: FlatItem; number: string; depth: number; selected: b
       {...attributes}
       {...listeners}
     >
+      {props.collapsed === undefined ? (
+        <span className="tree-toggle-space" aria-hidden="true" />
+      ) : (
+        <button
+          className={`tree-toggle${props.collapsed ? " collapsed" : ""}`}
+          aria-label={props.collapsed ? `Expand ${props.item.title}` : `Collapse ${props.item.title}`}
+          aria-expanded={!props.collapsed}
+          title={props.collapsed ? "Expand sub-sections" : "Collapse sub-sections"}
+          onPointerDown={stop}
+          onClick={(e) => (stop(e), props.onToggle())}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M3 2l4 3-4 3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
       <span className="num">{props.number}</span>
       <span className="title">{props.item.title}</span>
+      {count > 0 && (
+        <button
+          className={`tree-news${news!.own.length ? "" : " nested"}`}
+          title={`${count} unread notification${count === 1 ? "" : "s"}${news!.own.length ? "" : " in sub-sections"}:\n${[...news!.own, ...news!.nested]
+            .filter((n, i, list) => list.findIndex((m) => m.id === n.id) === i)
+            .map((n) => `• ${n.author.name}: ${n.summary}`)
+            .join("\n")}\nClick to go to the changed part (again for the next one)`}
+          aria-label={`${count} unread notification${count === 1 ? "" : "s"}`}
+          onPointerDown={stop}
+          onClick={(e) => (stop(e), props.onOpenNews())}
+        >
+          <BellIcon />
+          {count > 1 && <span>{count > 9 ? "9+" : count}</span>}
+        </button>
+      )}
     </li>
   );
 }
 
-export function OutlineTree(props: { project: Project; selectedId: string | null; onSelect(id: string): void }) {
+export function OutlineTree(props: {
+  project: Project;
+  /** Where the collapsed sections are remembered (per browser), e.g. "projects/<id>". */
+  storageKey: string;
+  selectedId: string | null;
+  onSelect(id: string): void;
+  /** Goes to a changed part (sub-block or comment) from a notification badge. */
+  onGoTo(t: Target): void;
+}) {
   const qc = useQueryClient();
   const all = useMemo(() => withDepth(props.project.blocks), [props.project]);
   const numbers = useMemo(() => outlineNumbers(all), [all]);
@@ -46,12 +126,72 @@ export function OutlineTree(props: { project: Project; selectedId: string | null
   const [offsetX, setOffsetX] = useState(0);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // While dragging, the dragged block's subtree travels with it and is hidden from the list.
+  const collapseKey = `sourcebook.outline.collapsed.${props.storageKey}`;
+  const [collapsed, setCollapsedState] = useState<ReadonlySet<string>>(() => new Set(storage.get(collapseKey)));
+  useEffect(() => setCollapsedState(new Set(storage.get(collapseKey))), [collapseKey]);
+  const setCollapsed = (next: Set<string>) => {
+    setCollapsedState(next);
+    storage.set(collapseKey, [...next]);
+  };
+  const parents = useMemo(() => new Set(all.map((i) => i.parentId).filter((p): p is string => !!p)), [all]);
+  const toggle = (id: string) => {
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setCollapsed(next);
+  };
+  // Reveal the selected section (e.g. reached from a notification or a link) when it is inside a collapsed one.
+  useEffect(() => {
+    if (!props.selectedId) return;
+    const closed = ancestorsOf(all, props.selectedId).filter((a) => collapsed.has(a));
+    if (closed.length) setCollapsed(new Set([...collapsed].filter((c) => !closed.includes(c))));
+  }, [props.selectedId, all]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Unread notifications per section; a collapsed section also shows those of its hidden sub-sections.
+  const { data: notifications = [] } = useNotifications();
+  const hiddenIds = useMemo(() => hiddenByCollapse(all, collapsed), [all, collapsed]);
+  const news = useMemo(() => {
+    const map = new Map<string, SectionNews>();
+    const entry = (id: string) => map.get(id) ?? (map.set(id, { own: [], nested: [] }), map.get(id)!);
+    for (const n of notifications) {
+      if (n.read) continue;
+      for (const blockId of new Set(n.targets.map((t) => t.blockId))) {
+        if (!numbers.has(blockId)) continue;
+        if (!hiddenIds.has(blockId)) entry(blockId).own.push(n);
+        else {
+          const shown = ancestorsOf(all, blockId).find((a) => !hiddenIds.has(a));
+          if (shown) entry(shown).nested.push(n);
+        }
+      }
+    }
+    return map;
+  }, [notifications, all, numbers, hiddenIds]);
+  // The badge only navigates: notifications are marked read from the bell on the block or the top-bar menu.
+  // Repeated clicks go through the changed parts of the section (and of its hidden sub-sections) in turn.
+  const newsTurn = useRef(new Map<string, number>());
+  const openNews = (id: string) => {
+    const n = news.get(id);
+    const inside = new Set([id, ...descendantsOf(all, id)]);
+    const targets: Target[] = [];
+    for (const item of [...(n?.own ?? []), ...(n?.nested ?? [])]) {
+      for (const t of item.targets) {
+        if (!inside.has(t.blockId)) continue;
+        const target: Target = { sectionId: t.blockId, ...(t.subBlockId ? { subBlockId: t.subBlockId } : {}), ...(t.commentId ? { commentId: t.commentId } : {}) };
+        if (!targets.some((x) => JSON.stringify(x) === JSON.stringify(target))) targets.push(target);
+      }
+    }
+    if (!targets.length) return props.onSelect(id);
+    const turn = newsTurn.current.get(id) ?? 0;
+    newsTurn.current.set(id, turn + 1);
+    props.onGoTo(targets[turn % targets.length]);
+  };
+
+  // Collapsed sub-sections are hidden; while dragging, the dragged block's subtree travels with it too.
   const visible = useMemo(() => {
-    if (!activeId) return all;
-    const hidden = descendantsOf(all, activeId);
+    const hidden = new Set(hiddenIds);
+    if (activeId) for (const id of descendantsOf(all, activeId)) hidden.add(id);
     return all.filter((i) => !hidden.has(i.id));
-  }, [all, activeId]);
+  }, [all, activeId, hiddenIds]);
   const projection =
     activeId && overId ? getProjection(visible, activeId, overId, offsetX, INDENT) : null;
 
@@ -94,6 +234,16 @@ export function OutlineTree(props: { project: Project; selectedId: string | null
       onDragEnd={onDragEnd}
       onDragCancel={reset}
     >
+      {parents.size > 0 && (
+        <div className="tree-tools">
+          <button className="link small" onClick={() => setCollapsed(new Set())} disabled={collapsed.size === 0}>
+            Expand all
+          </button>
+          <button className="link small" onClick={() => setCollapsed(new Set(parents))} disabled={[...parents].every((p) => collapsed.has(p))}>
+            Collapse all
+          </button>
+        </div>
+      )}
       <SortableContext items={visible.map((i) => i.id)} strategy={verticalListSortingStrategy}>
         <ul className="tree">
           {visible.map((item) => (
@@ -103,7 +253,11 @@ export function OutlineTree(props: { project: Project; selectedId: string | null
               number={numbers.get(item.id)!}
               depth={item.id === activeId && projection ? projection.depth : item.depth}
               selected={item.id === props.selectedId}
+              collapsed={parents.has(item.id) ? collapsed.has(item.id) : undefined}
+              news={news.get(item.id)}
               onSelect={() => props.onSelect(item.id)}
+              onToggle={() => toggle(item.id)}
+              onOpenNews={() => openNews(item.id)}
             />
           ))}
         </ul>

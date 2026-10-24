@@ -163,6 +163,56 @@ describe("notifications menu", () => {
   });
 });
 
+describe("outline badges and collapsing", () => {
+  it("marks sections with unread notifications, also on collapsed parents, and collapses sub-sections", async () => {
+    const child = { id: "d", title: "Details", parentId: "c", order: 1, folder: "002-design/001-details", subBlocks: [] };
+    project.blocks.push(child);
+    notifications.unshift({ id: "n3", createdAt: new Date().toISOString(), author: { ...author, name: "Reviewer", username: "reviewer" }, summary: "Fixed details", read: false, targets: [{ blockId: "d", label: "§2.1 Details" }] });
+    try {
+      await render();
+      await until(() => $(".tree-news"));
+      const row = (title: string) => $$(".tree-row").find((r) => r.querySelector(".title")?.textContent === title);
+      expect(row("Design")?.querySelector(".tree-news")?.classList.contains("nested")).toBe(false);
+      expect(row("Details")?.querySelector(".tree-news")?.getAttribute("title")).toContain("Reviewer: Fixed details");
+      expect(row("Introduction")?.querySelector(".tree-news")).toBeNull(); // only read notifications
+
+      // Collapsing Design hides Details and carries its badge (2 notifications: its own and the child's).
+      await click(row("Design")!.querySelector(".tree-toggle")!);
+      expect(row("Details")).toBeUndefined();
+      expect(row("Design")?.querySelector(".tree-news")?.textContent).toBe("2");
+      expect(JSON.parse(localStorage.getItem("sourcebook.outline.collapsed.projects/demo")!)).toEqual(["c"]);
+      await click($$(".tree-tools button").find((b) => b.textContent === "Expand all")!);
+      expect(row("Details")).toBeDefined();
+
+      // The badge goes to the changed part without marking anything read.
+      await click(row("Details")!.querySelector(".tree-news")!);
+      expect(window.location.hash).toBe("#/projects/demo/s/d");
+      await click(row("Design")!.querySelector(".tree-news")!);
+      expect(window.location.hash).toBe("#/projects/demo/s/c/b/s3");
+      expect(calls.filter((c) => c.includes("/read"))).toEqual([]);
+      expect(row("Details")?.querySelector(".tree-news")).not.toBeNull();
+    } finally {
+      project.blocks.pop();
+    }
+  });
+});
+
+describe("badges on sections and sub-blocks", () => {
+  it("shows a bell on the sub-block a notification is about, and marks it read when clicked", async () => {
+    await render("#/projects/demo/s/c");
+    await until(() => $(".subblock-head .notif-badge"));
+    const badges = $$(".subblock-head .notif-badge");
+    expect(badges).toHaveLength(1);
+    expect(badges[0].closest("#subblock-s3")).not.toBeNull();
+    expect(badges[0].getAttribute("title")).toContain("Claude: Rewrote the design — new formula");
+    expect($(".block-head .notif-badge")).toBeNull(); // the notification is about a sub-block, not the whole section
+    await click(badges[0]);
+    expect(calls).toContain("POST /api/notifications/n2/read");
+    await until(() => !$(".subblock-head .notif-badge"));
+    expect($(".subblock-head .notif-badge")).toBeNull();
+  });
+});
+
 describe("all comments", () => {
   it("lists open threads by section and goes to a thread", async () => {
     await render();

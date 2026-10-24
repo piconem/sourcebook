@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyDrop, getProjection, outlineNumbers, withDepth } from "./tree";
+import { ancestorsOf, applyDrop, getProjection, hiddenByCollapse, outlineNumbers, withDepth } from "./tree";
 
 const items = withDepth([
   { id: "a", title: "A", parentId: null },
@@ -25,5 +25,31 @@ describe("outline tree helpers", () => {
       { id: "a", parentId: null },
       { id: "a1", parentId: "a" },
     ]);
+  });
+
+  it("keeps the children of a collapsed section under it when dropping right after it", () => {
+    // c dragged up onto a1's position while "a" is collapsed: list order a, c, a1 must regroup.
+    const placement = applyDrop(items, "c", "b", null);
+    expect(placement).toEqual([
+      { id: "a", parentId: null },
+      { id: "a1", parentId: "a" },
+      { id: "c", parentId: null },
+      { id: "b", parentId: null },
+    ]);
+    const odd = applyDrop(items, "b", "a1", null);
+    expect(odd.map((p) => p.id)).toEqual(["a", "a1", "b", "c"]);
+    expect(odd.find((p) => p.id === "a1")?.parentId).toBe("a");
+  });
+
+  it("hides the descendants of collapsed sections", () => {
+    const deep = withDepth([
+      { id: "a", title: "A", parentId: null },
+      { id: "a1", title: "A1", parentId: "a" },
+      { id: "a11", title: "A11", parentId: "a1" },
+      { id: "b", title: "B", parentId: null },
+    ]);
+    expect([...hiddenByCollapse(deep, new Set(["a"]))]).toEqual(["a1", "a11"]);
+    expect([...hiddenByCollapse(deep, new Set(["a1"]))]).toEqual(["a11"]);
+    expect(ancestorsOf(deep, "a11")).toEqual(["a1", "a"]);
   });
 });

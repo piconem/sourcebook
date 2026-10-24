@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 import { CreateNotificationBodySchema, NotificationParamsSchema, ReloadRequestBodySchema } from "@sourcebook/shared";
 import type { UserStore } from "../store/UserStore.js";
+import { checkAuthor } from "../participants.js";
 
 /** Change notifications from external applications / assistants, and reload requests for open editors. */
 export const notificationRoutes =
@@ -9,6 +10,7 @@ export const notificationRoutes =
     app.get("/notifications", async (req) => ({ notifications: await req.nb.notifications.list() }));
 
     app.post("/notifications", { schema: { body: CreateNotificationBodySchema } }, async (req, reply) => {
+      if (req.body.author) await checkAuthor(req.nb, await users.get(), req.body.author);
       const author = req.body.author ?? (await users.get());
       const created = await req.nb.notifications.add(author, req.body.summary, req.body.targets);
       if (req.body.requestReload) await req.nb.notifications.requestReload(author, undefined, [created.id]);
@@ -28,6 +30,7 @@ export const notificationRoutes =
     });
 
     app.post("/reload-request", { schema: { body: ReloadRequestBodySchema.nullish() } }, async (req) => {
+      if (req.body?.author) await checkAuthor(req.nb, await users.get(), req.body.author);
       const author = req.body?.author ?? (await users.get());
       return req.nb.notifications.requestReload(author, req.body?.message, req.body?.notificationIds);
     });

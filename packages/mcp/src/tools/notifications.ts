@@ -1,7 +1,7 @@
 import type { ChangeTarget, Notification } from "@sourcebook/shared";
 import { z } from "zod";
 import type { NotebookView } from "../notebook.js";
-import { READ, WRITE, projectParam, run, type ToolContext } from "./common.js";
+import { READ, WRITE, agentParam, projectParam, run, type ToolContext } from "./common.js";
 
 /** API target for a reference to a section, a sub-block or a comment. */
 async function targetFor(nb: NotebookView, ref: string, note?: string): Promise<ChangeTarget> {
@@ -36,7 +36,7 @@ export function registerNotificationReadTools({ server, open }: ToolContext) {
   );
 }
 
-export function registerNotificationTools({ server, api, open, author }: ToolContext) {
+export function registerNotificationTools({ server, api, open, as }: ToolContext) {
   server.registerTool(
     "notify_changes",
     {
@@ -56,15 +56,17 @@ export function registerNotificationTools({ server, api, open, author }: ToolCon
           .max(50)
           .describe("Parts involved (most specific: a sub-block or a comment)"),
         request_reload: z.boolean().optional(),
+        agent: agentParam,
       },
       annotations: WRITE,
     },
-    run(async ({ project, summary, changes, request_reload }) => {
+    run(async ({ project, summary, changes, request_reload, agent }) => {
+      const author = as(agent);
       const nb = await open(project);
       const targets: ChangeTarget[] = [];
       for (const c of changes) targets.push(await targetFor(nb, c.ref, c.note));
       const n = await api.json<Notification>("POST", `${nb.base}/notifications`, { author, summary, targets, requestReload: !!request_reload });
-      return `Sent notification ${n.id}${n.targets.length ? ` about ${n.targets.map((t) => t.label).join(", ")}` : ""}${request_reload ? "; open editors were asked to reload" : ""}.`;
+      return `Sent notification ${n.id} as ${author.name} (@${author.username})${n.targets.length ? ` about ${n.targets.map((t) => t.label).join(", ")}` : ""}${request_reload ? "; open editors were asked to reload" : ""}.`;
     }),
   );
 
@@ -74,10 +76,11 @@ export function registerNotificationTools({ server, api, open, author }: ToolCon
       title: "Ask open editors to reload",
       description:
         "Asks the user's open Sourcebook editors to reload, showing your message and the notifications describing the changes (default: the unread ones). Call it once at the end of a group of changes (after notify_changes).",
-      inputSchema: { project: projectParam, message: z.string().max(500).optional() },
+      inputSchema: { project: projectParam, message: z.string().max(500).optional(), agent: agentParam },
       annotations: WRITE,
     },
-    run(async ({ project, message }) => {
+    run(async ({ project, message, agent }) => {
+      const author = as(agent);
       const nb = await open(project);
       const r = await api.json<{ notificationIds: string[] }>("POST", `${nb.base}/reload-request`, { author, ...(message ? { message } : {}) });
       return `Asked open editors to reload (${r.notificationIds.length} notification(s) listed).`;

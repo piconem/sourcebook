@@ -50,9 +50,9 @@ describe("MCP server: discovery", () => {
     expect(names).toEqual([
       "add_bib_entry", "add_comment", "add_image_from_reference", "add_subblock", "attach_reference", "cite", "create_project", "create_section", "create_template", "delete_bib_entry",
       "delete_comment", "delete_section", "delete_subblock", "detach_reference", "edit_subblock_text", "export_bibtex", "get_outline", "import_bibtex",
-      "list_bibliography", "list_comments", "list_notifications", "list_references", "list_workspace", "move_section", "move_subblock", "notify_changes", "read_bib_entry",
+      "list_bibliography", "list_comments", "list_notifications", "list_participants", "list_references", "list_workspace", "move_references", "move_section", "move_subblock", "notify_changes", "read_bib_entry",
       "read_document", "read_reference", "read_reference_figures", "read_reference_pages", "read_section", "read_subblock", "reanchor_comment", "reply_to_comment",
-      "request_reload", "resolve_comment", "save_reference_transcription", "search", "uncite", "update_bib_entry", "update_section", "update_subblock",
+      "request_reload", "resolve_comment", "save_reference_transcription", "search", "uncite", "update_bib_entry", "update_section", "update_subblock", "whoami",
     ]);
     expect(tools.find((t) => t.name === "delete_section")?.annotations?.destructiveHint).toBe(true);
     expect(tools.find((t) => t.name === "get_outline")?.annotations?.readOnlyHint).toBe(true);
@@ -297,6 +297,52 @@ describe("MCP: question / choice sub-blocks, resolving comments, notifications",
     expect(await ok("request_reload", { project: "demo", message: "All done" })).toContain("1 notification");
     expect((await call("notify_changes", { project: "demo", summary: "x", changes: [{ ref: "§9" }] })).isError).toBe(true);
   });
+
+  it("signs comments and notifications with the agent named in the call (several agents on one project)", async () => {
+    const { ok, call, rest, ids } = await setup();
+    expect(await ok("whoami")).toContain('Claude (assistant) (id "claude")');
+    const writer = { id: "writer", name: "Writer agent" };
+    const reviewer = { id: "Reviewer Bot", name: "Reviewer" };
+    expect(await ok("add_comment", { project: "demo", subblock: "§1#1", text: "Draft ready", agent: writer })).toContain("as Writer agent (@writer)");
+    const added = await ok("add_comment", { project: "demo", subblock: "§1#1", text: "Too long", agent: reviewer });
+    expect(added).toContain("as Reviewer (@reviewer-bot)");
+    const commentId = /\[comment (\S+)\]/.exec(added)![1];
+    await ok("reply_to_comment", { project: "demo", comment: commentId, text: "Shortened", agent: writer });
+    await ok("resolve_comment", { project: "demo", comment: commentId, agent: reviewer });
+    await ok("add_comment", { project: "demo", subblock: "§1#1", text: "Default identity" });
+    const comments = await rest("GET", `/api/projects/demo/blocks/${ids.overview}/subblocks/${ids.md}/comments`);
+    const list = (comments.comments ?? comments) as { text: string; author: { username: string; name: string; kind?: string }; replies: { author: { username: string } }[]; resolution?: { by: { username: string } } }[];
+    expect(list.map((c) => c.author.username)).toEqual(["writer", "reviewer-bot", "claude"]);
+    expect(list[0].author).toEqual({ name: "Writer agent", username: "writer", kind: "assistant" });
+    expect(list[1].replies[0].author.username).toBe("writer");
+    expect(list[1].resolution?.by.username).toBe("reviewer-bot");
+
+    await ok("notify_changes", { project: "demo", summary: "Reviewed", changes: [{ ref: "§1" }], agent: reviewer });
+    const [n] = (await rest("GET", "/api/projects/demo/notifications")).notifications;
+    expect(n.author).toEqual({ name: "Reviewer", username: "reviewer-bot", kind: "assistant" });
+    expect((await call("add_comment", { project: "demo", subblock: "§1#1", text: "x", agent: { id: "!!!", name: "Bad" } })).text).toMatch(/Invalid agent id/);
+  });
+
+  it("lists the participants and refuses identities already taken by someone else", async () => {
+    const { ok, call, rest } = await setup();
+    await rest("PUT", "/api/user", { name: "Mario Rossi", username: "mariorossi" });
+    await ok("add_comment", { project: "demo", subblock: "§1#1", text: "Draft ready", agent: { id: "writer", name: "Writer agent" } });
+    await ok("notify_changes", { project: "demo", summary: "Reviewed", changes: [{ ref: "§1" }], agent: { id: "reviewer", name: "Reviewer" } });
+    const list = await ok("list_participants", { project: "demo" });
+    expect(list).toContain('Writer agent — id "writer" · agent · 1 contribution(s)');
+    expect(list).toContain('Reviewer — id "reviewer" · agent · 1 contribution(s)');
+    expect(list).toContain('Mario Rossi — id "mariorossi" · local user (reserved) · 0 contribution(s)');
+    expect((await rest("GET", "/api/projects/demo/participants")).participants.map((p: { username: string }) => p.username)).toEqual(["reviewer", "writer", "mariorossi"]);
+
+    // Same id + same name: the same agent continuing (case and spaces of the name do not matter).
+    expect((await call("add_comment", { project: "demo", subblock: "§1#1", text: "More", agent: { id: "writer", name: "writer AGENT " } })).isError).toBe(false);
+    // Taken id, taken name, local user's username: refused.
+    expect((await call("add_comment", { project: "demo", subblock: "§1#1", text: "x", agent: { id: "writer", name: "Other writer" } })).text).toMatch(/id "writer" is already used by "writer AGENT"/);
+    expect((await call("notify_changes", { project: "demo", summary: "x", changes: [], agent: { id: "writer2", name: "Reviewer" } })).text).toMatch(/name "Reviewer" is already used by @reviewer/);
+    expect((await call("add_comment", { project: "demo", subblock: "§1#1", text: "x", agent: { id: "mariorossi", name: "Mario Rossi" } })).text).toMatch(/belongs to the local user/);
+    // The web editor (no explicit author) is never refused.
+    expect((await rest("POST", `/api/projects/demo/notifications`, { summary: "by hand", targets: [] })).author.username).toBe("mariorossi");
+  });
 });
 
 describe("MCP over HTTP (/mcp)", () => {
@@ -309,10 +355,27 @@ describe("MCP over HTTP (/mcp)", () => {
     close = () => app.close();
     const client = new Client({ name: "http-test", version: "1.0.0" });
     await client.connect(new StreamableHTTPClientTransport(new URL(`${address}/mcp`)));
-    expect((await client.listTools()).tools.length).toBe(43);
+    expect((await client.listTools()).tools.length).toBe(46);
     const res = (await client.callTool({ name: "get_outline", arguments: { project: "demo" } })) as { content: { text: string }[] };
     expect(res.content[0].text).toContain("§1.1 Scope");
     await client.close();
+  });
+
+  it("takes the connection's agent identity from the URL or headers", async () => {
+    const { app } = await setup();
+    const address = await app.listen({ port: 0, host: "127.0.0.1" });
+    close = () => app.close();
+    const whoami = async (url: string, headers?: Record<string, string>) => {
+      const client = new Client({ name: "http-test", version: "1.0.0" });
+      await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers } }));
+      const res = (await client.callTool({ name: "whoami", arguments: {} })) as { content: { text: string }[] };
+      await client.close();
+      return res.content[0].text;
+    };
+    expect(await whoami(`${address}/mcp?agent_id=writer&agent_name=Writer%20agent`)).toContain('Writer agent (id "writer")');
+    expect(await whoami(`${address}/mcp`, { "x-sourcebook-agent-id": "reviewer", "x-sourcebook-agent-name": "Reviewer" })).toContain('Reviewer (id "reviewer")');
+    const bad = await app.inject({ method: "POST", url: "/mcp?agent_id=%21%21", headers: { host: "127.0.0.1", "content-type": "application/json" }, payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} } });
+    expect(bad.statusCode).toBe(400);
   });
 
   it("rejects non-local hosts and origins", async () => {

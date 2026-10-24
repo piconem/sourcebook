@@ -4,7 +4,9 @@
  * (Claude Code, Claude Desktop, …). Talks to a running Sourcebook server.
  *   SOURCEBOOK_URL                  default http://127.0.0.1:4000
  *   SOURCEBOOK_MCP_READONLY=1       read-only tools only
- *   SOURCEBOOK_MCP_AUTHOR_NAME / SOURCEBOOK_MCP_AUTHOR_USERNAME   author of the assistant's comments
+ *   SOURCEBOOK_MCP_AGENT_ID / SOURCEBOOK_MCP_AGENT_NAME   identity of this agent (author of its comments and
+ *                                  notifications); one per agent when several work on the same project.
+ *                                  SOURCEBOOK_MCP_AUTHOR_USERNAME / _NAME are accepted too.
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { McpSettings } from "@sourcebook/shared";

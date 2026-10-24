@@ -1,5 +1,14 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createSourcebookMcpServer, injectApi, optionsFromEnv, type Injectable } from "@sourcebook/mcp";
+import {
+  AGENT_ID_HEADER,
+  AGENT_NAME_HEADER,
+  DEFAULT_AUTHOR,
+  createSourcebookMcpServer,
+  injectApi,
+  optionsFromEnv,
+  withAgent,
+  type Injectable,
+} from "@sourcebook/mcp";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SettingsStore } from "../store/SettingsStore.js";
 
@@ -26,7 +35,8 @@ function localOnly(req: FastifyRequest, reply: FastifyReply): boolean {
 }
 
 /**
- * MCP over Streamable HTTP at /mcp (stateless: a fresh MCP server per request). Tools reach the REST API
+ * MCP over Streamable HTTP at /mcp (stateless: a fresh MCP server per request). The connection's agent
+ * identity comes from the x-sourcebook-agent-id / -name headers or the agent_id / agent_name query parameters. Tools reach the REST API
  * in-process through app.inject, so every change goes through the same validation, locking and live events.
  */
 export function mcpRoutes(root: FastifyInstance, settings: SettingsStore) {
@@ -40,7 +50,17 @@ export function mcpRoutes(root: FastifyInstance, settings: SettingsStore) {
         return;
       }
       const env = optionsFromEnv();
-      const server = createSourcebookMcpServer(api, { ...env, readOnly: env.readOnly || mcp.readOnly });
+      // Each agent can identify its connection (headers, or ?agent_id=…&agent_name=… on the URL).
+      const query = req.query as Record<string, string | undefined>;
+      const header = (name: string) => [req.headers[name]].flat()[0];
+      let author = env.author ?? DEFAULT_AUTHOR;
+      try {
+        author = withAgent(author, header(AGENT_ID_HEADER) ?? query.agent_id, header(AGENT_NAME_HEADER) ?? query.agent_name);
+      } catch (e) {
+        reply.code(400).send({ jsonrpc: "2.0", error: { code: -32602, message: (e as Error).message }, id: null });
+        return;
+      }
+      const server = createSourcebookMcpServer(api, { ...env, author, readOnly: env.readOnly || mcp.readOnly });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       reply.hijack();
       reply.raw.on("close", () => {

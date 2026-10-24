@@ -7,6 +7,8 @@ export function PopoverMenu(props: {
   icon: ReactNode;
   /** Extra class of the menu (e.g. a wider panel). */
   className?: string;
+  /** Class of the button (default: a top-bar icon button). */
+  buttonClassName?: string;
   children(close: () => void): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -26,7 +28,7 @@ export function PopoverMenu(props: {
   return (
     <div className="popover-wrap" ref={wrap}>
       <button
-        className={`icon topbar-btn${open ? " active" : ""}`}
+        className={`${props.buttonClassName ?? "icon topbar-btn"}${open ? " active" : ""}`}
         title={props.title}
         aria-label={props.label}
         aria-haspopup="menu"

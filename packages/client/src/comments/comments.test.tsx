@@ -144,7 +144,8 @@ describe("top bar settings", () => {
     expect($(".brand").textContent).toBe("Sourcebook");
     expect($(".topbar .avatar").textContent).toBe("MR");
 
-    await click(button("User settings"));
+    await click(button("User menu"));
+    await click($$("[role=menuitem]").find((b) => b.textContent?.startsWith("Settings"))!);
     const dialog = $(".dialog[open]");
     const [name, username] = $$("input", dialog) as HTMLInputElement[];
     expect([name.value, username.value]).toEqual(["Mario Rossi", "mariorossi"]);

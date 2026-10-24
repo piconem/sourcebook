@@ -8,7 +8,7 @@ import {
 } from "@sourcebook/shared";
 import { z } from "zod";
 import { projectLabel } from "../refs.js";
-import { READ, WRITE, projectParam, run, runContent, type ToolContext } from "./common.js";
+import { READ, WRITE, agentParam, projectParam, run, runContent, type ToolContext } from "./common.js";
 
 /** Characters of text returned per call (the rest is available with `parts`). */
 const MAX_TEXT = 200_000;
@@ -201,7 +201,30 @@ export function registerReferenceFigureTool({ server, api, open }: ToolContext) 
   );
 }
 
-export function registerReferenceWriteTools({ server, api, open, author }: ToolContext) {
+export function registerReferenceWriteTools({ server, api, open, as }: ToolContext) {
+  server.registerTool(
+    "move_references",
+    {
+      title: "Move reference files",
+      description:
+        "Moves reference files and/or folders into another folder of references/ (keeping their names). Associations with sections/sub-blocks and links in the text follow. Fails without moving anything if a name already exists there.",
+      inputSchema: {
+        project: projectParam,
+        paths: z.array(pathParam).min(1).max(500),
+        to: z.string().describe('Destination folder inside references/ (it must exist), "" for references/ itself'),
+      },
+      annotations: WRITE,
+    },
+    run(async ({ project, paths, to }) => {
+      const nb = await open(project);
+      const { moved } = await api.json<{ moved: { from: string; to: string }[] }>("POST", `${nb.base}/references/move`, {
+        paths: paths.map(cleanPath),
+        dir: cleanPath(to).replace(/\/+$/, ""),
+      });
+      return moved.length ? moved.map((m) => `Moved references/${m.from} → references/${m.to}`).join("\n") : "Nothing moved: already in that folder.";
+    }),
+  );
+
   server.registerTool(
     "save_reference_transcription",
     {
@@ -213,10 +236,12 @@ export function registerReferenceWriteTools({ server, api, open, author }: ToolC
         path: pathParam,
         page: z.number().int().positive().describe("Page (or slide/sheet) number"),
         markdown: z.string().min(1).describe("Faithful transcription of the page (tables as Markdown tables, formulas in LaTeX, figures described briefly)"),
+        agent: agentParam,
       },
       annotations: { ...WRITE, idempotentHint: true },
     },
-    run(async ({ project, path, page, markdown }) => {
+    run(async ({ project, path, page, markdown, agent }) => {
+      const author = as(agent);
       const nb = await open(project);
       const clean = cleanPath(path);
       await api.json("PUT", `${nb.base}/references/mcp/transcription`, { path: clean, page, markdown, by: author.name });

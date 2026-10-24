@@ -242,8 +242,14 @@ preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
   nothing is stored. Open editors show a dialog with the sender, the message and the notifications concerned
   (default: the unread ones), with "Reload now" (flushes every pending debounced save, then `location.reload()`) and
   "Later". Editors that are not open when the request is sent never see it (the notifications remain).
-- MCP: `notify_changes` (references like `§2.1#3` or comment ids, resolved to ids; author = the assistant),
-  `request_reload`, `list_notifications`. In read-only mode they are refused like every MCP write.
+- MCP: `notify_changes` (references like `§2.1#3` or comment ids, resolved to ids; author = the agent, see "Agent
+  identities"), `request_reload`, `list_notifications`. In read-only mode they are refused like every MCP write.
+- Badges where the changes are: the outline shows a bell (count when > 1, tooltip with authors and summaries) on each
+  section with unread notifications about it, its sub-blocks or comments; a collapsed section shows those of its hidden
+  sub-sections with an outlined bell. Clicking it only navigates — to the changed sub-block/comment, cycling through
+  them on repeated clicks. Each changed sub-block (notifications about it or its comments) and each section changed as
+  a whole has a bell in its header; clicking it marks those notifications read. Notifications become read only there
+  or from the top-bar menu (opening an item, "Mark as read", "Mark all as read").
 
 ## Links (URL of sections, sub-blocks and comments)
 - The hash route carries the place shown: `#/projects/<id>/s/<sectionId>[/b/<subBlockId>[/c/<commentId>]]` (templates
@@ -253,6 +259,19 @@ preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
 - Opening a link (or back/forward) selects the section, scrolls to it and, for a sub-block, scrolls to it and flashes
   it (in document mode after ~0.8 s, while the section finishes aligning); a comment link also opens the comments
   column and activates the thread. Unknown ids are ignored. The ↗ button of sections and sub-blocks copies the full URL.
+
+## User menu and version
+- The avatar at the top right opens a menu (it used to open Settings directly): name and @username, "Settings…" and
+  "About Sourcebook…" (dialog with name, description, version and release date).
+- Name, version, release date and description are constants in `packages/shared/src/version.ts`, used by the client
+  and as the MCP server's version. 0.2.0, released 2026-10-24; the `package.json` versions follow by hand.
+
+## Outline: collapsing sections
+- Every section with sub-sections has an arrow to collapse it; "Expand all / Collapse all" above the outline. The
+  collapsed ids are a per-browser convenience in `localStorage` (`sourcebook.outline.collapsed.<kind>/<id>`).
+- Selecting a section hidden inside collapsed ones (link, notification, comment list) expands its ancestors.
+- Drag and drop works with hidden items: dropping between a collapsed section and its hidden children is regrouped
+  depth-first (`depthFirst` in `tree.ts`), so children always stay under their parent.
 
 ## Top bar actions and scrolling mode
 - Top bar, right side: all comments, notifications (editor only), scrolling mode, Appearance, profile avatar
@@ -331,6 +350,20 @@ projects and templates, in both scrolling modes.
   the UI builds copyable Claude Code commands and client JSON (shell-quoted: the path may contain `&`).
 - Comments by the assistant carry `author.kind: "assistant"` and show an "AI" badge. 🔗 buttons copy references
   (section, sub-block, code lines, quoted Markdown text) to paste in the chat.
+- Agent identities (several agents on one project): an agent signs comments, replies, resolutions, notifications,
+  reload requests and transcriptions as `{ name, username: <id>, kind: "assistant" }`. The connection's identity
+  comes from `SOURCEBOOK_MCP_AGENT_ID` / `_NAME` (stdio; the older `SOURCEBOOK_MCP_AUTHOR_USERNAME` / `_NAME` still
+  work) or, on `/mcp`, from `?agent_id=&agent_name=` or the `x-sourcebook-agent-id` / `-name` headers (400 on an
+  invalid id); default `claude` / "Claude (assistant)". Agents sharing a connection pass `agent: { id, name }` to the
+  signing tools; ids are normalized ("Reviewer Bot" → `reviewer-bot`). `whoami` reports the identity.
+- Participants: there is no user registry; `GET …/participants` (MCP `list_participants`) derives, per project, who
+  signed comments, replies, resolutions and notifications (latest name per username, contributions, last activity),
+  plus the local user (reserved). When a request passes an explicit `author`, the server refuses (409) the local
+  user's username, a username already used with another name, or a name already used by another username (names
+  compared trimmed and case-insensitively). The same id + name is the same agent. Requests without `author` (the web
+  editor) are never checked. Only per project: the same id may mean different agents in different projects.
+- Edits to content are still attributed to "the assistant" (live-event origin `mcp`), not to a specific agent.
+- `move_references` moves reference files/folders between folders (same as the UI's Move to…).
 - Limits: sub-blocks move only within their section; images/drawings are read as descriptions and cannot be written
   via MCP (question and choice sub-blocks are written as JSON); binary references (PDF, Office) cannot be read as text.
 
@@ -395,6 +428,16 @@ prompts is parsed by the MCP server's reference parser.
   in the text stay, flagged as missing). The export adds an "_Attachments:_" line after the section/sub-block and the
   files go into the ZIP. MCP: `attach_reference` / `detach_reference`; the outline shows `📎`.
 
+## Moving reference files
+- `POST …/references/move { paths, dir }` moves files/folders into an existing folder (`""` = root) keeping their names.
+  Everything is checked before anything moves: a missing source or destination (404), a folder into itself (400), a
+  name already in the destination or two items with the same name (409). Items already there are skipped; entries
+  inside a selected folder move with it. Converted Markdown (`.mcp/`), attachments and Markdown links follow, as for
+  renames (`renameReferencePath`).
+- UI: items are draggable (custom `application/x-sourcebook-references` data, so they are never taken for uploads);
+  folders and breadcrumbs accept them (not a folder into itself or where they already are). "Move to…" (selection bar,
+  context menu) opens a folder picker. If the folder being browsed moves, the browser follows it.
+
 ## Reference files for the assistant (Markdown conversion)
 - Every reference file has an MCP status: **text** and **images** are read as they are; documents are **converted to
   Markdown** automatically (on upload, or when the file is first listed, e.g. copied in by hand; again when it changes —
@@ -447,7 +490,7 @@ prompts is parsed by the MCP server's reference parser.
   level deep; `.ppt`/`.xls` (old binary formats) are not readable.
 
 ## Known limitations
-- References cannot be moved between folders (rename only).
+- Moving references keeps names: a name clash in the destination refuses the whole move (rename first).
 - The MCP `search` tool looks in the notebook and the bibliography, not inside reference files or their converted
   Markdown (read them with `read_reference`).
 - Excalidraw appState is saved as-is (includes view state such as scroll/zoom).

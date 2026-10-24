@@ -13,6 +13,7 @@ import { extOf } from "./viewers/basic";
 import { viewerFor } from "./viewers";
 import { McpBadge } from "./McpBadge";
 import { McpInspectorDialog } from "./McpInspectorDialog";
+import { MoveReferencesDialog } from "./MoveReferencesDialog";
 import { InsertImageDialog } from "./InsertImageDialog";
 import type { PickedImage } from "./ReferenceImagePicker";
 import { IMAGE_ASSET_EXT } from "@sourcebook/shared";
@@ -22,7 +23,8 @@ type SortKey = "name" | "size" | "modified";
 type Pending =
   | { kind: "folder" }
   | { kind: "rename"; node: ReferenceNode }
-  | { kind: "delete"; nodes: ReferenceNode[] };
+  | { kind: "delete"; nodes: ReferenceNode[] }
+  | { kind: "move"; nodes: ReferenceNode[] };
 
 const DIR_KEY = "sourcebook.references.dir";
 const LAYOUT_KEY = "sourcebook.references.layout";
@@ -43,7 +45,10 @@ const store = {
   },
 };
 
-const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+/** Items dragged inside the browser (moved, not uploaded). */
+const MOVE_TYPE = "application/x-sourcebook-references";
+const isMove = (e: DragEvent) => Array.from(e.dataTransfer.types).includes(MOVE_TYPE);
+const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer.types).includes("Files") && !isMove(e);
 const parentOf = (path: string) => (path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
 
 function findDir(root: ReferenceNode | undefined, path: string): ReferenceNode | undefined {
@@ -73,7 +78,8 @@ const formatDate = (iso?: string) =>
 
 /**
  * Drive-style file manager for references/: browse folders, open, rename, create and delete.
- * Multiple selection (Ctrl/⌘-click, Shift-click, checkboxes, Ctrl/⌘+A) for ZIP download and deletion.
+ * Multiple selection (Ctrl/⌘-click, Shift-click, checkboxes, Ctrl/⌘+A) for ZIP download, moving and deletion.
+ * Items are moved by dragging them onto a folder (or a breadcrumb) or with "Move to…".
  */
 export function ReferencesBrowser() {
   const qc = useQueryClient();
@@ -90,6 +96,8 @@ export function ReferencesBrowser() {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [status, setStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  /** Paths being dragged inside the browser (dataTransfer cannot be read during dragover). */
+  const dragging = useRef<string[]>([]);
   const area = useRef<HTMLDivElement>(null);
 
   const current = findDir(tree, dir);
@@ -247,6 +255,50 @@ export function ReferencesBrowser() {
     }
   };
 
+  /** Moves items into `target`; the browsed folder follows when it is moved. */
+  const moveTo = async (paths: string[], target: string) => {
+    setMenu(null);
+    try {
+      const { moved } = await api.moveReferences(paths, target);
+      await refresh();
+      refreshNotebook(); // associations and links in the text follow the move
+      setPending(null);
+      const followed = moved.find((m) => dir === m.from || dir.startsWith(`${m.from}/`));
+      if (followed) setDir(followed.to + dir.slice(followed.from.length));
+      setStatus({
+        text: moved.length
+          ? `Moved ${moved.length === 1 ? moved[0].from.split("/").pop() : plural(moved.length, "item")} to references/${target}`
+          : `Already in references/${target}`,
+      });
+    } catch (e) {
+      if (pending?.kind === "move") setDialogError((e as Error).message);
+      else setStatus({ text: (e as Error).message, error: true });
+    }
+  };
+  /** Whether dragged items may be dropped on folder `path` (not on or inside themselves). */
+  const canMoveInto = (path: string) =>
+    dragging.current.length > 0 && dragging.current.every((p) => p !== path && !path.startsWith(`${p}/`) && parentOf(p) !== path);
+  /** Drop handlers of a folder (card, row or breadcrumb): files from the computer upload, dragged items move. */
+  const folderDrop = (path: string) => ({
+    onDragOver: (e: DragEvent) => {
+      if (isMove(e) ? !canMoveInto(path) : !hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = isMove(e) ? "move" : "copy";
+      setDropTarget(path);
+    },
+    onDragLeave: () => setDropTarget((d) => (d === path ? null : d)),
+    onDrop: (e: DragEvent) => {
+      if (!isMove(e) && !hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDropTarget(null);
+      if (isMove(e)) {
+        if (canMoveInto(path)) void moveTo(dragging.current, path);
+      } else upload(path, Array.from(e.dataTransfer.files));
+    },
+  });
+
   const submitPending = async (value: string) => {
     if (!pending) return;
     setDialogError(null);
@@ -262,7 +314,7 @@ export function ReferencesBrowser() {
         refreshNotebook(); // associations and links in the text follow the rename
         if (dir === old || dir.startsWith(`${old}/`)) setDir(path + dir.slice(old.length));
         setSelected(path);
-      } else {
+      } else if (pending.kind === "delete") {
         const { deleted } = await api.deleteReferences(pending.nodes.map((n) => n.path));
         await refresh();
         refreshNotebook();
@@ -315,24 +367,20 @@ export function ReferencesBrowser() {
       if (!selection.has(n.path)) setSelected(n.path);
       setMenu({ node: n, x: e.clientX, y: e.clientY });
     },
-    ...(n.kind === "dir"
-      ? {
-          onDragOver: (e: DragEvent) => {
-            if (!hasFiles(e)) return;
-            e.preventDefault();
-            e.stopPropagation();
-            setDropTarget(n.path);
-          },
-          onDragLeave: () => setDropTarget((d) => (d === n.path ? null : d)),
-          onDrop: (e: DragEvent) => {
-            if (!hasFiles(e)) return;
-            e.preventDefault();
-            e.stopPropagation();
-            setDropTarget(null);
-            upload(n.path, Array.from(e.dataTransfer.files));
-          },
-        }
-      : {}),
+    draggable: true,
+    onDragStart: (e: DragEvent) => {
+      // Dragging a selected item moves the whole selection.
+      const paths = selection.has(n.path) ? selectedNodes.map((s) => s.path) : [n.path];
+      if (!selection.has(n.path)) setSelected(n.path);
+      dragging.current = paths;
+      e.dataTransfer.setData(MOVE_TYPE, JSON.stringify(paths));
+      e.dataTransfer.effectAllowed = "move";
+    },
+    onDragEnd: () => {
+      dragging.current = [];
+      setDropTarget(null);
+    },
+    ...(n.kind === "dir" ? folderDrop(n.path) : {}),
   });
 
   const menuButton = (n: ReferenceNode) => (
@@ -381,7 +429,7 @@ export function ReferencesBrowser() {
   return (
     <div
       ref={area}
-      className={`ref-browser${dropTarget === "" ? " drop" : ""}`}
+      className={`ref-browser${dropTarget === "" && !dragging.current.length ? " drop" : ""}`}
       tabIndex={0}
       onKeyDown={(e) => {
         if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(e.key) && !(e.target as HTMLElement).closest("input")) {
@@ -412,7 +460,7 @@ export function ReferencesBrowser() {
     >
       <header className="ref-browser-head">
         <nav className="crumbs" aria-label="Folder path">
-          <button className={`crumb${dir ? "" : " current"}`} onClick={() => setDir("")}>
+          <button className={`crumb${dir ? "" : " current"}${dropTarget === "" && dragging.current.length ? " drop" : ""}`} onClick={() => setDir("")} {...folderDrop("")}>
             References
           </button>
           {crumbs.map((seg, i) => {
@@ -420,7 +468,7 @@ export function ReferencesBrowser() {
             return (
               <span key={path} className="crumb-wrap">
                 <span className="crumb-sep" aria-hidden="true">›</span>
-                <button className={`crumb${path === dir ? " current" : ""}`} onClick={() => setDir(path)}>
+                <button className={`crumb${path === dir ? " current" : ""}${dropTarget === path ? " drop" : ""}`} onClick={() => setDir(path)} {...folderDrop(path)}>
                   {seg}
                 </button>
               </span>
@@ -484,6 +532,7 @@ export function ReferencesBrowser() {
             </button>
             <span className="ref-selection-name">{selectedNodes.length} selected</span>
             <button onClick={() => download(selectedNodes)}>Download ZIP</button>
+            <button onClick={() => ask({ kind: "move", nodes: selectedNodes })}>Move to…</button>
             {convertible(selectedNodes) && <button onClick={() => convertNow(selectedNodes, false)}>Convert for the assistant</button>}
             <button className="danger" onClick={() => ask({ kind: "delete", nodes: selectedNodes })}>
               Delete
@@ -510,6 +559,7 @@ export function ReferencesBrowser() {
             {selectedNode.mcp?.kind === "markdown" && <button onClick={() => setInspecting(selectedNode.path)}>Assistant content</button>}
             {isImageFile(selectedNode) && <button onClick={() => setInserting({ path: selectedNode.path, caption: "" })}>Insert into a section…</button>}
             <button onClick={() => ask({ kind: "rename", node: selectedNode })}>Rename</button>
+            <button onClick={() => ask({ kind: "move", nodes: [selectedNode] })}>Move to…</button>
             <button className="danger" onClick={() => ask({ kind: "delete", nodes: [selectedNode] })}>
               Delete
             </button>
@@ -518,7 +568,7 @@ export function ReferencesBrowser() {
           <span className="muted small">
             {searching
               ? `${plural(items.length, "result")} for “${query.trim()}”`
-              : `${plural(folders, "folder")}, ${plural(items.length - folders, "file")} · double-click to open · Ctrl/⌘ or Shift + click to select several · right-click for actions · drop files to upload`}
+              : `${plural(folders, "folder")}, ${plural(items.length - folders, "file")} · double-click to open · Ctrl/⌘ or Shift + click to select several · right-click for actions · drag onto a folder to move · drop files to upload`}
           </span>
         )}
       </div>
@@ -545,7 +595,7 @@ export function ReferencesBrowser() {
               <div className={`ref-thumb${n.kind === "dir" ? " folder" : ""}`}>
                 {checkbox(n)}
                 {isImage(n) ? (
-                  <img src={referenceUrl(n.path)} alt="" loading="lazy" />
+                  <img src={referenceUrl(n.path)} alt="" loading="lazy" draggable={false} />
                 ) : (
                   <span className="ref-thumb-icon" aria-hidden="true">{iconOf(n)}</span>
                 )}
@@ -625,7 +675,7 @@ export function ReferencesBrowser() {
       )}
       {dropTarget !== null && (
         <div className="ref-drop-hint" aria-hidden="true">
-          Drop to upload to references/{dropTarget || dir}
+          {dragging.current.length ? `Drop to move to references/${dropTarget}` : `Drop to upload to references/${dropTarget || dir}`}
         </div>
       )}
 
@@ -644,6 +694,7 @@ export function ReferencesBrowser() {
             <>
               <div className="context-menu-title">{menuTargets.length} selected</div>
               <button onClick={() => download(menuTargets)}>Download as ZIP</button>
+              <button onClick={() => ask({ kind: "move", nodes: menuTargets })}>Move to…</button>
               {convertible(menuTargets) && <button onClick={() => convertNow(menuTargets, false)}>Convert for the assistant</button>}
               <hr />
               <button className="danger" onClick={() => ask({ kind: "delete", nodes: menuTargets })}>
@@ -655,6 +706,7 @@ export function ReferencesBrowser() {
               <button onClick={() => (setMenu(null), openNode(menu.node))}>{menu.node.kind === "dir" ? "Open folder" : "Open"}</button>
               <button onClick={() => download([menu.node])}>{menu.node.kind === "dir" ? "Download as ZIP" : "Download"}</button>
               <button onClick={() => ask({ kind: "rename", node: menu.node })}>Rename…</button>
+              <button onClick={() => ask({ kind: "move", nodes: [menu.node] })}>Move to…</button>
               {isImageFile(menu.node) && <button onClick={() => (setMenu(null), setInserting({ path: menu.node.path, caption: "" }))}>Insert into a section…</button>}
               {menu.node.mcp?.kind === "markdown" && (
                 <>
@@ -682,6 +734,13 @@ export function ReferencesBrowser() {
         submitLabel={pending?.kind === "rename" ? "Rename" : "Create"}
         error={dialogError}
         onSubmit={submitPending}
+        onClose={() => setPending(null)}
+      />
+      <MoveReferencesDialog
+        nodes={pending?.kind === "move" ? pending.nodes : null}
+        tree={tree}
+        error={dialogError}
+        onMove={(target) => pending?.kind === "move" && void moveTo(pending.nodes.map((n) => n.path), target)}
         onClose={() => setPending(null)}
       />
       <Dialog

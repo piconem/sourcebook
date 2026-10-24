@@ -18,6 +18,7 @@ import { Dialog } from "./Dialog";
 import { ObjectiveField } from "./ObjectiveField";
 import { InsertPoint } from "./InsertPoint";
 import { SubBlockFrame } from "./SubBlockFrame";
+import { NotificationBadge } from "../notifications/NotificationBadge";
 
 export function BlockView({
   blockId,
@@ -176,6 +177,7 @@ export function BlockView({
           onBlur={saveTitle}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         />
+        <NotificationBadge blockId={blockId} subBlockId={null} />
         <span className="muted">blocks/{block.folder}</span>
         <button className="danger" onClick={requestBlockDelete}>
           Delete block

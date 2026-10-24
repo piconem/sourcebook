@@ -89,7 +89,7 @@ describe("top bar and scrolling mode", () => {
       "Notifications",
       "Scrolling mode",
       "Appearance",
-      "User settings",
+      "User menu",
     ]);
     expect($(".sidebar-head [aria-label=Appearance]")).toBeNull();
     // Breadcrumb back to the projects list

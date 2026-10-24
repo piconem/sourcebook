@@ -195,7 +195,7 @@ function ProjectEditor({
           <BibliographyNavItem active={page === "bibliography"} onClick={() => setPage("bibliography")} />
         </nav>
         <div className="sidebar-label">Structure</div>
-        <OutlineTree project={project} selectedId={page === "block" ? selected : null} onSelect={selectBlock} />
+        <OutlineTree project={project} storageKey={`${kind}/${id}`} selectedId={page === "block" ? selected : null} onSelect={selectBlock} onGoTo={goTo} />
         <div className="sidebar-actions">
           <button onClick={() => addBlock(null)}>+ Section</button>
           <button disabled={!selected} onClick={() => addBlock(selected)}>

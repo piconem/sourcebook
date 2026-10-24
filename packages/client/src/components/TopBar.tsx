@@ -7,6 +7,9 @@ import type { ScrollMode } from "./scrollMode";
 import type { NotebookKind } from "@sourcebook/shared";
 import { routeHref } from "../router";
 import { SettingsDialog } from "./SettingsDialog";
+import { PopoverMenu } from "./PopoverMenu";
+import { AboutDialog, releaseLabel } from "./AboutDialog";
+import { APP_NAME, APP_VERSION } from "@sourcebook/shared";
 
 export function TopBar(props: {
   /** Shown in the editor: "Projects › <name>" / "Templates › <name>". */
@@ -21,6 +24,7 @@ export function TopBar(props: {
   const { data: user } = useUser();
   const [settings, setSettings] = useState(false);
   const [appearance, setAppearance] = useState(false);
+  const [about, setAbout] = useState(false);
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -52,20 +56,48 @@ export function TopBar(props: {
           <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" />
         </svg>
       </button>
-      <button
-        className="topbar-user"
-        title={user ? `${user.name} (@${user.username}) — Settings` : "Settings"}
-        aria-label="User settings"
-        onClick={() => setSettings(true)}
+      <PopoverMenu
+        label="User menu"
+        title={user ? `${user.name} (@${user.username})` : "User menu"}
+        buttonClassName="topbar-user"
+        className="user-menu"
+        icon={
+          user ? (
+            <Avatar name={user.name} username={user.username} size={30} />
+          ) : (
+            <span className="avatar placeholder" style={{ width: 30, height: 30 }} />
+          )
+        }
       >
-        {user ? (
-          <Avatar name={user.name} username={user.username} size={30} />
-        ) : (
-          <span className="avatar placeholder" style={{ width: 30, height: 30 }} />
+        {(close) => (
+          <>
+            {user && (
+              <div className="user-menu-head">
+                <Avatar name={user.name} username={user.username} size={36} />
+                <span className="user-menu-who">
+                  <strong>{user.name}</strong>
+                  <span className="muted small">@{user.username}</span>
+                </span>
+              </div>
+            )}
+            <button role="menuitem" className="popover-item" onClick={() => (close(), setSettings(true))}>
+              <span className="popover-item-text">
+                <strong>Settings…</strong>
+                <span className="muted small">Profile, AI assistant (MCP)</span>
+              </span>
+            </button>
+            <button role="menuitem" className="popover-item" onClick={() => (close(), setAbout(true))}>
+              <span className="popover-item-text">
+                <strong>About {APP_NAME}…</strong>
+                <span className="muted small">Version {APP_VERSION} · {releaseLabel()}</span>
+              </span>
+            </button>
+          </>
         )}
-      </button>
+      </PopoverMenu>
       </div>
       <SettingsDialog open={settings} onClose={() => setSettings(false)} />
+      <AboutDialog open={about} onClose={() => setAbout(false)} />
       <AppearanceDialog open={appearance} onClose={() => setAppearance(false)} />
     </header>
   );

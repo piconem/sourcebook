@@ -83,7 +83,8 @@ async function openMcpTab() {
     ),
   );
   await until(() => !!$(".topbar .avatar:not(.placeholder)"));
-  await click($("[aria-label='User settings']"));
+  await click($("[aria-label='User menu']"));
+  await click($$("[role=menuitem]").find((b) => b.textContent?.startsWith("Settings"))!);
   await click($$("[role=tab]").find((t) => t.textContent === "AI assistant (MCP)")!);
   await until(() => !!$(".mcp-settings"));
 }
