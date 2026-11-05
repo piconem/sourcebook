@@ -306,7 +306,6 @@ preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
   template, delete with confirmation; "New …" dialog with a "Start from" choice). Opening one sets the notebook API
   base (`setNotebookBase`) and drops cached notebook data before anything renders; the top bar shows
   "Sourcebook › Projects › name", and templates carry a "Template" badge.
-- The repository's `example-project/` was copied (not moved) to `~/Sourcebook/projects/example-project`.
 
 ## Inserting sub-blocks
 Between sub-blocks (and before the first) a thin insertion point reveals, on hover or keyboard focus, a line with a
