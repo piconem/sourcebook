@@ -52,6 +52,10 @@ beforeEach(() => {
     const list = db[kind];
     if (m[3] === "/notebook") return json({ name: list.find((p) => p.id === m[2])?.name, blocks: [] });
     if (m[3] === "/references") return json({ name: "references", path: "", kind: "dir", children: [] });
+    // The opened editor also loads the bibliography: an empty one (answering with the project summary made the test
+    // fail now and then, when that request finished before the test did).
+    if (m[3] === "/bibliography") return json([]);
+    if (m[3]) return json({ error: `Not mocked: ${url}` }, 404);
     if (!m[2]) {
       if (method === "GET") return json(list);
       const created = summary(kind, body.name.toLowerCase().replace(/\W+/g, "-"), body.name, body.from ? 5 : 0, new Date().toISOString(),

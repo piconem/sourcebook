@@ -166,7 +166,18 @@ publish() {
 
   if [ "$checks" = 1 ]; then
     echo "+ pnpm typecheck && pnpm test"
-    if [ "$dry" = 0 ]; then pnpm typecheck >/dev/null && pnpm test >/dev/null || die "Typecheck or tests failed"; ok "Typecheck and tests"; fi
+    if [ "$dry" = 0 ]; then
+      # Output kept in a log: on failure, its end (the failing test) is shown and the whole log stays for reading.
+      local log="${TMPDIR:-/tmp}/sourcebook-release-checks.log"
+      if (pnpm typecheck && pnpm test) >"$log" 2>&1; then
+        ok "Typecheck and tests"
+      else
+        grep -E "FAIL|×|error TS|Error:" "$log" | head -30 >&2 || true
+        echo "--- last lines of $log:" >&2
+        tail -n 40 "$log" >&2
+        die "Typecheck or tests failed (full output: $log)"
+      fi
+    fi
   fi
 
   local body; body="$(mktemp)"; trap "rm -f '$body'" EXIT
