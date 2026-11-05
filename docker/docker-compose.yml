@@ -1,11 +1,10 @@
 # Sourcebook with Docker Compose.
 #
-#   cd docker
-#   cp .env.example .env          # then adjust it
+#   cp .env.example .env          # then adjust it (or download both files: see docker/README.md)
 #   docker compose up -d
 #   docker compose logs sourcebook   # first start: owner username and password
 #
-# Uses the image built by ./build.sh (or pulled from GHCR once published). Every setting comes from .env.
+# Pulls the public image ghcr.io/piconem/sourcebook (or uses one built by ./build.sh). Every setting comes from .env.
 name: sourcebook
 
 services:

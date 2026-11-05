@@ -22,14 +22,18 @@ folders are created automatically, and the **Sourcebook Demo** template is added
 [Templates](user-guide.md#templates)).
 
 ## Run it with Docker
+The image is public on GitHub Container Registry (`ghcr.io/piconem/sourcebook`, `linux/amd64` and `linux/arm64`):
+only the compose file and its settings are needed, not the repository.
 ```bash
-docker/build.sh                     # builds the image (until it is published on GHCR)
-cd docker
-cp .env.example .env                # data folder, port, base path, public URL…
-mkdir -p data
-docker compose up -d
+mkdir sourcebook && cd sourcebook
+curl -fsSLO https://raw.githubusercontent.com/piconem/sourcebook/main/docker/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/piconem/sourcebook/main/docker/.env.example
+mkdir -p data                       # the workspace, created before the start so it belongs to you
+docker compose up -d                # pulls the image
 docker compose logs sourcebook      # first start: owner username and password
 ```
+Adjust `.env` (data folder, port, base path, public URL, version) before the first start. To build the image from the
+sources instead: `docker/build.sh` in a clone, then the same `docker compose` commands from `docker/`.
 Everything about the image, the compose file, reverse proxies and publishing: [docker/README.md](../docker/README.md).
 
 ## First start

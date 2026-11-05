@@ -10,17 +10,46 @@
 
 The version is the one in the root `package.json`.
 
-## Build and run
+## Run the published image
+
+The image is public: `ghcr.io/piconem/sourcebook` on
+[GitHub Container Registry](https://github.com/piconem/sourcebook/pkgs/container/sourcebook), for `linux/amd64` and
+`linux/arm64`, tagged with each version (`0.2.0`) and `latest`. Pulling it needs no account or login, and running it
+needs only `docker-compose.yml` and `.env`, not the repository:
+
+```bash
+mkdir sourcebook && cd sourcebook
+curl -fsSLO https://raw.githubusercontent.com/piconem/sourcebook/main/docker/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/piconem/sourcebook/main/docker/.env.example
+# adjust .env: data folder, port, base path, public URL, version (SOURCEBOOK_VERSION=0.2.0 to pin one)
+mkdir -p data                        # before the first start, so it belongs to you and not to root
+docker compose up -d                 # pulls the image
+docker compose logs sourcebook       # first start: owner username and password
+```
+
+Without compose, the same in one command (data in `./data`, this machine only):
+
+```bash
+mkdir -p data
+docker run -d --name sourcebook --restart unless-stopped -u "$(id -u):$(id -g)" \
+  -p 127.0.0.1:4000:4000 -v "$PWD/data:/data" ghcr.io/piconem/sourcebook:latest
+docker logs sourcebook
+```
+
+## Build it yourself
+
+From a clone of the repository, to try local changes or for an architecture not published:
 
 ```bash
 docker/build.sh                      # → sourcebook:0.2.0, ghcr.io/piconem/sourcebook:0.2.0 (+ :latest)
 
 cd docker
-cp .env.example .env                 # adjust it: data folder, port, base path, public URL…
-mkdir -p data                        # before the first start, so it belongs to you and not to root
-docker compose up -d
-docker compose logs sourcebook       # first start: owner username and password
+cp .env.example .env
+mkdir -p data
+docker compose up -d                 # uses the image just built (same name and tag)
 ```
+
+## Using it
 
 Open `http://127.0.0.1:4000/`, sign in as the owner and choose a new password. The workspace starts with the
 **Sourcebook Demo** template.
@@ -34,7 +63,8 @@ Open `http://127.0.0.1:4000/`, sign in as the owner and choose a new password. T
   `http://127.0.0.1:4500/mcp`. Set `SOURCEBOOK_PUBLIC_URL` to match, since the ready-made MCP command in *Settings → AI
   assistant* is built from it. Behind a proxy the MCP follows the base path too (`https://mydomain.it/marco/sourcebook/mcp`).
 - **User**: the container runs as `SOURCEBOOK_UID:SOURCEBOOK_GID` (default 1000:1000), never as root.
-- **Upgrade**: build or pull the new image, then `docker compose up -d`.
+- **Upgrade**: `docker compose pull && docker compose up -d` (with `SOURCEBOOK_VERSION=latest`, or after raising the
+  pinned version in `.env`); the data folder stays as it is. Release notes: [docs/releases](../docs/releases/).
 - **Owner password lost**: `docker compose exec sourcebook node --import tsx src/resetOwnerPassword.ts` prints a
   temporary one; then `docker compose restart`.
 

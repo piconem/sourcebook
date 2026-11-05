@@ -191,19 +191,22 @@ pnpm install
 pnpm start               # → http://127.0.0.1:4000
 ```
 
-**With Docker**:
+**With Docker** — no clone needed: the image is public on
+[GitHub Container Registry](https://github.com/piconem/sourcebook/pkgs/container/sourcebook) (`linux/amd64`,
+`linux/arm64`):
 ```bash
-docker/build.sh          # builds the image
-cd docker
-cp .env.example .env     # data folder, port, base path, public URL…
-mkdir -p data
-docker compose up -d     # → http://127.0.0.1:4000
+mkdir sourcebook && cd sourcebook
+curl -fsSLO https://raw.githubusercontent.com/piconem/sourcebook/main/docker/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/piconem/sourcebook/main/docker/.env.example
+mkdir -p data            # your projects and accounts; created before the start so it belongs to you
+docker compose up -d     # pulls ghcr.io/piconem/sourcebook → http://127.0.0.1:4000
 ```
+Settings (port, data folder, base path, public URL, version) are in `.env`; see [Docker](docker/README.md).
 
 At the first start Sourcebook creates the **owner** account and prints its password in the log (`docker compose logs
 sourcebook` with Docker); you choose a new one at the first sign-in. Your data lives in `~/Sourcebook` (Node) or in
-`docker/data` (Docker); the workspace starts with the [templates](#templates) below — open **Sourcebook Demo** first,
-a guided tour of every block type.
+the `data` folder next to `docker-compose.yml` (Docker); the workspace starts with the [templates](#templates) below —
+open **Sourcebook Demo** first, a guided tour of every block type.
 
 ## Documentation
 
