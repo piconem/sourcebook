@@ -36,6 +36,49 @@ docker run -d --name sourcebook --restart unless-stopped -u "$(id -u):$(id -g)" 
 docker logs sourcebook
 ```
 
+### Use a folder you already have
+
+Any folder on your computer can be the workspace: an existing Sourcebook workspace (e.g. `~/Sourcebook`, used so far
+with `pnpm start`), or an empty folder where you want your projects to live. Set it in `.env` **before** the first
+`docker compose up -d`:
+
+1. **Path** — `SOURCEBOOK_DATA`, preferably absolute:
+   ```dotenv
+   SOURCEBOOK_DATA=/home/alex/Sourcebook          # Linux
+   SOURCEBOOK_DATA=/Users/alex/Sourcebook         # macOS (the folder must be shared with Docker Desktop:
+                                                  #   Settings → Resources → File sharing; /Users is by default)
+   SOURCEBOOK_DATA=C:/Users/alex/Sourcebook       # Windows (forward slashes; see Windows below)
+   ```
+2. **Owner of the folder** — the container runs as this user and must be able to write there. On Linux, read them
+   from the folder itself:
+   ```bash
+   stat -c '%u %g' /home/alex/Sourcebook          # e.g. 1000 1000
+   ```
+   ```dotenv
+   SOURCEBOOK_UID=1000
+   SOURCEBOOK_GID=1000
+   ```
+   (On macOS and Windows Docker Desktop maps the permissions itself: leave the defaults.)
+3. **Start**: `docker compose up -d`, then `docker compose logs sourcebook`.
+
+What Sourcebook finds there:
+
+| The folder holds | What happens |
+|---|---|
+| nothing (empty or new folder) | `projects/`, `templates/` and `.sourcebook/` are created, the owner account and the five templates are added |
+| a workspace of Sourcebook ≥ 0.2 (it has `.sourcebook/`) | everything stays: projects, templates, **the same accounts, passwords and agent tokens** — sign in as before |
+| a workspace of Sourcebook 0.1 (projects, no `.sourcebook/`) | the projects are kept, but the owner account is created as `node` (the user inside the container), so it does not match the name on your old comments. Better: start it **once with Node** (`SOURCEBOOK_WORKSPACE=<folder> pnpm start` in a clone, on the computer where you used 0.1), which makes your old profile the owner; then stop it and switch to Docker |
+
+Good to know:
+
+- Back up the folder before the first start with a new version.
+- Do not run the Node server (`pnpm start` / `pnpm dev`) and the container **on the same folder at the same time**:
+  each keeps its own sessions and live updates, and they would overwrite each other's changes.
+- The files stay plain files in that folder (Markdown, `.mmd`, `.tex`, `.csv`…): you can version it with git or sync
+  it as before — but not `.sourcebook/` to a public place: it holds the accounts.
+- Without compose: `-v /home/alex/Sourcebook:/data -u "$(stat -c '%u:%g' /home/alex/Sourcebook)"` in the `docker run`
+  command above.
+
 ## Build it yourself
 
 From a clone of the repository, to try local changes or for an architecture not published:
@@ -54,10 +97,10 @@ docker compose up -d                 # uses the image just built (same name and 
 Open `http://127.0.0.1:4000/`, sign in as the owner and choose a new password. The workspace starts with the
 **Sourcebook Demo** template.
 
-- **Data**: everything is in the folder mounted on `/data` (`SOURCEBOOK_DATA`, default `docker/data`): projects,
-  templates and `.sourcebook/` (accounts, password hashes, sessions, tokens, settings). Recreating or upgrading the
-  container keeps it; back up that folder. To use an existing workspace, point `SOURCEBOOK_DATA` at it (e.g.
-  `~/Sourcebook`), with `SOURCEBOOK_UID`/`SOURCEBOOK_GID` set to its owner (`id -u`, `id -g`).
+- **Data**: everything is in the folder mounted on `/data` (`SOURCEBOOK_DATA`, default `./data` next to
+  `docker-compose.yml`): projects, templates and `.sourcebook/` (accounts, password hashes, sessions, tokens,
+  settings). Recreating or upgrading the container keeps it; back up that folder. To use a folder you already have:
+  [above](#use-a-folder-you-already-have).
 - **One port**: the web interface, the REST API (`/api`) and the MCP server for AI assistants (`/mcp`) are served by
   the same server on the same port (`SOURCEBOOK_PORT` on the host): with port 4500 the MCP address is
   `http://127.0.0.1:4500/mcp`. Set `SOURCEBOOK_PUBLIC_URL` to match, since the ready-made MCP command in *Settings → AI
