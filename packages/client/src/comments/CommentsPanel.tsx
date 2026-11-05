@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { keys, useUser } from "../api/queries";
 import { Avatar } from "../components/Avatar";
 import { AskAiButton } from "../ai/AskAiButton";
+import { useReadOnly } from "../auth/EditAccess";
 import { useBridge, type AnchorStatus, type CommentBridge } from "./bridge";
 import { fullTime, relativeTime } from "./time";
 
@@ -53,8 +54,55 @@ function Composer(props: { placeholder: string; submitLabel: string; onSubmit(te
   );
 }
 
-function Entry({ entry, onDelete, kind, actions }: { entry: Comment | CommentReply; onDelete(): Promise<void>; kind: "comment" | "reply"; actions?: ReactNode }) {
+export function TrashIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M6 6l1 14h10l1-14" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+/** Trash button that asks inline ("Delete" / "Keep") before deleting. */
+export function DeleteButton({ what, confirmLabel = "Delete", onDelete }: { what: string; confirmLabel?: string; onDelete(): Promise<unknown> }) {
   const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (confirming)
+    return (
+      <span className="comment-confirm" role="group" aria-label={`Delete ${what}?`}>
+        <button
+          className="danger solid"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            onDelete().finally(() => {
+              setBusy(false);
+              setConfirming(false);
+            });
+          }}
+        >
+          {confirmLabel}
+        </button>
+        <button className="link" onClick={() => setConfirming(false)}>
+          Keep
+        </button>
+      </span>
+    );
+  return (
+    <button className="icon comment-delete" title={`Delete ${what}`} aria-label={`Delete ${what}`} onClick={() => setConfirming(true)}>
+      <TrashIcon />
+    </button>
+  );
+}
+
+function Entry({ entry, onDelete, kind, actions }: { entry: Comment | CommentReply; onDelete(): Promise<void>; kind: "comment" | "reply"; actions?: ReactNode }) {
+  const readOnly = useReadOnly();
+  const { data: user } = useUser();
+  // With read access only your own comments can be deleted (the server checks it too).
+  const canDelete = !readOnly || entry.author.username === user?.username;
+  const thread = kind === "comment" && "replies" in entry && entry.replies.length > 0;
   return (
     <div className={`comment-entry ${kind}`}>
       <div className="comment-meta">
@@ -70,20 +118,7 @@ function Entry({ entry, onDelete, kind, actions }: { entry: Comment | CommentRep
           </span>
         </div>
         {actions}
-        {confirming ? (
-          <span className="comment-confirm">
-            <button className="link danger" onClick={() => onDelete().finally(() => setConfirming(false))}>
-              Delete{kind === "comment" && "replies" in entry && entry.replies.length ? " thread" : ""}
-            </button>
-            <button className="link" onClick={() => setConfirming(false)}>
-              Keep
-            </button>
-          </span>
-        ) : (
-          <button className="icon comment-delete" title={`Delete ${kind}`} aria-label={`Delete ${kind}`} onClick={() => setConfirming(true)}>
-            ✕
-          </button>
-        )}
+        {canDelete && <DeleteButton what={thread ? "thread" : kind} confirmLabel={thread ? "Delete thread" : "Delete"} onDelete={onDelete} />}
       </div>
       <p className="comment-text">{entry.text}</p>
     </div>
@@ -128,6 +163,7 @@ export function CommentsPanel(props: {
   const { blockId, subBlock, bridge } = props;
   const qc = useQueryClient();
   const { data: user } = useUser();
+  const readOnly = useReadOnly();
   const key = keys.comments(blockId, subBlock.id);
   const { data: comments, error } = useQuery({ queryKey: key, queryFn: () => api.getComments(blockId, subBlock.id) });
   const { activeId, status } = useBridge(bridge);
@@ -162,6 +198,11 @@ export function CommentsPanel(props: {
       return next;
     });
     if (resolved && activeId === c.id) bridge.setActive(null);
+    await refresh();
+  };
+
+  const deleteResolved = async () => {
+    for (const c of comments?.filter((x) => x.resolution) ?? []) await api.deleteComment(blockId, subBlock.id, c.id);
     await refresh();
   };
 
@@ -200,6 +241,16 @@ export function CommentsPanel(props: {
           {detachedCount > 0 && ` ${detachedCount} comment${detachedCount === 1 ? " has" : "s have"} lost its text.`}
         </p>
       )}
+      {resolvedCount > 0 && !readOnly && (
+        <div className="comments-resolved-bar">
+          <DeleteButton
+            what={`${resolvedCount} resolved thread${resolvedCount === 1 ? "" : "s"}`}
+            confirmLabel={`Delete ${resolvedCount} resolved`}
+            onDelete={deleteResolved}
+          />
+          <span className="muted small">Delete resolved threads</span>
+        </div>
+      )}
       {notice && <p className="notice small">{notice}</p>}
       {error && <p className="render-error">{(error as Error).message}</p>}
       {!comments && !error && <p className="muted small">Loading…</p>}
@@ -218,6 +269,9 @@ export function CommentsPanel(props: {
               <button className="link" onClick={() => setExpanded((s) => new Set(s).add(c.id))}>
                 Show
               </button>
+              {(!readOnly || c.author.username === user?.username) && (
+                <DeleteButton what="resolved thread" onDelete={() => api.deleteComment(blockId, subBlock.id, c.id).then(refresh)} />
+              )}
             </article>
           );
         }

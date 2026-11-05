@@ -1,11 +1,15 @@
 import type { Project, ProjectCommentThread } from "@sourcebook/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { useProjectComments } from "../api/queries";
+import { api } from "../api/client";
+import { keys, useProjectComments } from "../api/queries";
+import { useReadOnly } from "../auth/EditAccess";
 import { Avatar } from "../components/Avatar";
 import { PopoverMenu } from "../components/PopoverMenu";
 import type { Target } from "../router";
 import { registry } from "../subblocks";
 import { outlineNumbers, withDepth } from "../tree";
+import { DeleteButton } from "./CommentsPanel";
 import { relativeTime } from "./time";
 
 type Filter = "open" | "resolved" | "all";
@@ -16,6 +20,14 @@ export function AllCommentsButton({ project, goTo }: { project: Project | undefi
   const [filter, setFilter] = useState<Filter>("open");
   const numbers = useMemo(() => (project ? outlineNumbers(withDepth(project.blocks)) : new Map<string, string>()), [project]);
   const open = threads.filter((t) => !t.comment.resolution).length;
+  const readOnly = useReadOnly();
+  const qc = useQueryClient();
+  const resolved = threads.filter((t) => t.comment.resolution);
+  /** Deletes every resolved thread of the project (with access to write). */
+  const deleteResolved = async () => {
+    for (const t of resolved) await api.deleteComment(t.blockId, t.subBlockId, t.comment.id);
+    await Promise.all([qc.invalidateQueries({ queryKey: keys.projectComments }), qc.invalidateQueries({ queryKey: ["comments"] }), qc.invalidateQueries({ queryKey: ["block"] })]);
+  };
   const shown = threads.filter((t) => filter === "all" || (filter === "open") === !t.comment.resolution);
   const groups: { blockId: string; title: string; threads: ProjectCommentThread[] }[] = [];
   for (const t of shown) {
@@ -50,6 +62,16 @@ export function AllCommentsButton({ project, goTo }: { project: Project | undefi
               ))}
             </div>
           </div>
+          {filter === "resolved" && resolved.length > 0 && !readOnly && (
+            <div className="allc-bulk">
+              <DeleteButton
+                what={`all ${resolved.length} resolved thread${resolved.length === 1 ? "" : "s"} of the project`}
+                confirmLabel={`Delete ${resolved.length} resolved`}
+                onDelete={deleteResolved}
+              />
+              <span className="muted small">Delete all resolved threads</span>
+            </div>
+          )}
           {groups.length === 0 ? (
             <p className="muted small notif-empty">{filter === "open" ? "No open comments — nothing left to handle." : "No comments."}</p>
           ) : (

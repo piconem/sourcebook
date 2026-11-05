@@ -23,6 +23,7 @@ import { basename, extname } from "node:path";
 import { z } from "zod";
 import { badRequest, notFound } from "../errors.js";
 import { validatePath } from "../store/ReferencesStore.js";
+import { UNTRUSTED_FILE_CSP } from "../securityHeaders.js";
 
 const MAX_UPLOAD = 100 * 1024 * 1024;
 
@@ -73,10 +74,7 @@ export const referenceRoutes =
             `${req.query.download ? "attachment" : "inline"}; filename*=UTF-8''${name}`,
           );
         if (isActiveContent(mime)) {
-          reply.header(
-            "content-security-policy",
-            "sandbox; default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:",
-          );
+          reply.header("content-security-policy", UNTRUSTED_FILE_CSP);
         }
         return reply.send(createReadStream(abs));
       },

@@ -327,7 +327,8 @@ export function SubBlockFrame(props: {
           />
         </div>
       )}
-      <div className="subblock-body surface" {...inert} aria-readonly={frozen || undefined}>
+      {/* Markdown is text to read: in the "Light text" appearance it stays light in dark themes (styles.css). */}
+      <div className={`subblock-body surface${subBlock.type === "markdown" ? " surface-text" : ""}`} {...inert} aria-readonly={frozen || undefined}>
         {Editor ? (
           <Suspense fallback={<p className="muted">Loading editor…</p>}>
             <Editor

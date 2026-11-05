@@ -13,7 +13,13 @@
 - Changes are saved automatically; other people's and assistants' changes appear live.
 
 The outline on the left collapses sub-sections (arrow on each section, "Expand all / Collapse
-all", remembered per browser and project). In **References**, files and folders are moved by dragging them onto a
+all", remembered per browser and project). The left sidebar can be widened by dragging its edge, or hidden
+to give the document the whole width: the button left of the logo, or **Ctrl+\\** (⌘+\\ on macOS); remembered per
+browser. **Zoom** (− 100% + in the top bar, or Ctrl + mouse wheel over the document) enlarges or shrinks only the
+document, not the whole page, from 50% to 200%; click the percentage to go back to 100%. Drawings keep their own
+zoom. **Appearance** (half-moon icon): theme (Light, Dark, Sepia, Midnight or System) and, for dark themes, how
+blocks look: dark like the theme, *light text* (Markdown blocks light for reading, code and diagrams dark) or *light
+blocks*. In **References**, files and folders are moved by dragging them onto a
 folder or a breadcrumb, or with "Move to…" (links and attachments follow). The avatar at the top right opens the
 user menu: Settings and About (version, release date).
 

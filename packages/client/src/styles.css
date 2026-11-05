@@ -26,6 +26,39 @@
   color: var(--s-text);
   color-scheme: var(--s-scheme);
 }
+/* Text surfaces (Markdown sub-blocks): their own palette, light in dark themes with the "Light text" appearance
+   (--t-* / --tsyn-* are set by src/theme/appearance.ts, equal to --s-* / --syn-* otherwise). The .surface rules
+   above, on the same element, then read these values. */
+.surface-text {
+  --s-bg: var(--t-bg);
+  --s-field: var(--t-field);
+  --s-text: var(--t-text);
+  --s-muted: var(--t-muted);
+  --s-border: var(--t-border);
+  --s-border-strong: var(--t-border-strong);
+  --s-hover: var(--t-hover);
+  --s-subtle: var(--t-subtle);
+  --s-code-bg: var(--t-code-bg);
+  --s-accent-soft: var(--t-accent-soft);
+  --s-objective-bg: var(--t-objective-bg);
+  --s-objective-border: var(--t-objective-border);
+  --s-objective-text: var(--t-objective-text);
+  --s-selection: var(--t-selection);
+  --s-active-line: var(--t-active-line);
+  --s-scheme: var(--t-scheme);
+  --syn-keyword: var(--tsyn-keyword);
+  --syn-string: var(--tsyn-string);
+  --syn-number: var(--tsyn-number);
+  --syn-comment: var(--tsyn-comment);
+  --syn-function: var(--tsyn-function);
+  --syn-type: var(--tsyn-type);
+  --syn-variable: var(--tsyn-variable);
+  --syn-property: var(--tsyn-property);
+  --syn-meta: var(--tsyn-meta);
+  --syn-tag: var(--tsyn-tag);
+  --syn-attr: var(--tsyn-attr);
+  --syn-operator: var(--tsyn-operator);
+}
 ::selection { background: var(--s-selection); }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -44,6 +77,8 @@ select { background: var(--panel); border: 1px solid var(--border); border-radiu
 .shell { display: flex; flex-direction: column; height: 100vh; }
 .app { display: grid; grid-template-columns: 280px 1fr; flex: 1; min-height: 0; position: relative; }
 .sidebar { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; overflow: auto; }
+.sidebar[hidden] { display: none; }
+.app.sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
 .sidebar h1 { font-size: 15px; margin: 16px 14px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; border-top: 1px solid var(--border); margin-top: auto; }
 .sidebar-actions a { font-size: 13px; color: var(--accent); align-self: center; }
@@ -62,15 +97,27 @@ select { background: var(--panel); border: 1px solid var(--border); border-radiu
 .badge { margin-left: auto; font-size: 11px; color: var(--muted); }
 
 .main { overflow: auto; padding: 24px 32px 80px; }
+/* Zoom of the document area (top bar "− 100% +"): CSS zoom, so text reflows to the width like in a word processor.
+   Undone on drawings (Excalidraw has its own zoom and maps the pointer wrongly under CSS zoom) and on code editors
+   (CodeMirror measures its own layout; their font follows --sb-zoom instead, see CodeMirror.tsx). */
+.main-zoom .drawing, .main-zoom .cm-editor { zoom: calc(1 / var(--sb-zoom, 1)); }
+.zoom-control { display: inline-flex; align-items: center; gap: 0; margin-right: 4px; }
+.zoom-control .topbar-btn { padding: 5px; }
+.zoom-control .topbar-btn:disabled { opacity: .35; }
+.zoom-value {
+  border: none; background: none; padding: 4px 2px; min-width: 44px; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--muted); border-radius: 6px;
+}
+.zoom-value:hover { background: var(--hover); color: var(--text); }
 .block-view { max-width: 1100px; margin: 0 auto; }
-.block-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.block-title { flex: 1; font-size: 26px; font-weight: 650; border: none; background: transparent; padding: 4px 0; outline: none; color: var(--text); }
+.block-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; }
+.block-title { flex: 1 1 12em; min-width: 8em; font-size: 26px; font-weight: 650; border: none; background: transparent; padding: 4px 0; outline: none; color: var(--text); }
 .block-title:focus { border-bottom: 2px solid var(--accent); }
-.block-head .muted { font-size: 12px; font-family: ui-monospace, monospace; }
+.block-head .muted { font-size: 12px; font-family: ui-monospace, monospace; white-space: nowrap; }
 
 .subblock { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 14px; }
 .subblock.dragging { opacity: .6; z-index: 2; position: relative; }
-.subblock-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.subblock-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .subblock-head .handle { cursor: grab; border: none; padding: 0 4px; touch-action: none; color: var(--muted); }
 .subblock-head .type { font-weight: 600; }
 .subblock-head .file { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
@@ -115,7 +162,9 @@ select { background: var(--panel); border: 1px solid var(--border); border-radiu
 .image-fields { display: flex; gap: 8px; margin-top: 8px; }
 .image-fields input { flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; background: var(--field); }
 
-.drawing { height: 520px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+/* position: relative keeps Excalidraw's "Loading scene…" overlay (absolute, inset 0) inside the drawing:
+   without it the overlay covered the whole page for a moment whenever a drawing mounted (a visible blink). */
+.drawing { position: relative; height: 520px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 
 .sidebar-head { display: flex; align-items: center; gap: 6px; padding: 12px 10px 6px 14px; }
 .sidebar-head h1 { flex: 1; margin: 0; min-width: 0; }
@@ -250,6 +299,9 @@ body.subblock-expanded-open { overflow: hidden; }
 .theme-swatch .sw-line { height: 4px; border-radius: 2px; }
 .theme-card .muted { font-size: 12px; }
 .check.disabled { opacity: .55; }
+.surface-modes { border: none; padding: 0; margin: 4px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.surface-modes legend { font-weight: 600; margin-bottom: 6px; padding: 0; }
+.surface-modes.disabled { opacity: .55; }
 
 /* ---- generic ---- */
 .button-like {
@@ -448,9 +500,11 @@ body.subblock-expanded-open { overflow: hidden; }
 .comment-who { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
 .comment-name { font-weight: 600; }
 .comment-text { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
-.comment-delete { opacity: 0; font-size: 11px; }
-.comment-entry:hover .comment-delete, .comment-delete:focus-visible { opacity: 1; }
-.comment-confirm { display: inline-flex; gap: 8px; font-size: 12px; }
+.comment-delete { color: var(--muted); padding: 4px; }
+button.comment-delete:hover, button.comment-delete:focus-visible { color: var(--danger); background: var(--hover); }
+.comment-confirm { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; flex: none; }
+.comment-confirm button.danger.solid { font-size: 12px; padding: 3px 10px; }
+.comments-resolved-bar { display: flex; align-items: center; gap: 6px; margin: 2px 0 4px; }
 .link.danger { color: var(--danger); }
 .comment-reply-btn { font-size: 12px; margin-top: 6px; }
 .composer { margin-top: 8px; }
@@ -469,9 +523,9 @@ body.subblock-expanded-open { overflow: hidden; }
 .cm-comment-line { background: color-mix(in srgb, var(--s-objective-border) 14%, transparent); }
 .cm-comment-line.active { background: color-mix(in srgb, var(--s-objective-border) 32%, transparent); }
 .cm-comment-range { cursor: pointer; }
-.cm-comment-gutter { width: 26px; cursor: pointer; }
-.cm-comment-gutter .cm-gutterElement { text-align: center; font-size: 11px; }
-.cm-comment-gutter .cm-gutterElement:hover:empty::after { content: "+"; color: var(--accent); font-weight: 700; font-size: 13px; }
+.cm-comment-gutter { width: 2em; cursor: pointer; }
+.cm-comment-gutter .cm-gutterElement { text-align: center; font-size: .85em; }
+.cm-comment-gutter .cm-gutterElement:hover:empty::after { content: "+"; color: var(--accent); font-weight: 700; font-size: 1.15em; }
 .cm-comment-marker { cursor: pointer; }
 .md-editor { position: relative; }
 .selection-comment {
@@ -528,6 +582,7 @@ body.subblock-expanded-open { overflow: hidden; }
 
 /* ---- workspace: home, breadcrumbs, templates ---- */
 .topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sidebar-toggle { margin-left: -8px; margin-right: -4px; }
 a.brand { text-decoration: none; }
 .topbar-crumbs { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); min-width: 0; }
 .topbar-crumbs a { color: var(--muted); text-decoration: none; }
@@ -652,7 +707,7 @@ a.nav-item { text-decoration: none; }
 .ask-ai-output pre.copy-value { max-height: 38vh; overflow: auto; }
 
 /* ---- sub-block header: one compact group of actions ---- */
-.subblock-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.subblock-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; flex: 0 1 auto; margin-left: auto; }
 .subblock-actions .icon { width: 28px; height: 28px; padding: 0; justify-content: center; border-radius: 6px; }
 .subblock-actions .danger { width: 28px; height: 28px; padding: 0; margin-left: 4px; }
 .subblock-head .save { min-width: 0; }
@@ -877,6 +932,7 @@ textarea.qa-question { font-weight: 600; }
 .seg button { border: none; border-radius: 0; padding: 2px 8px; font-size: 12px; background: none; }
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.allc-bulk { display: flex; align-items: center; gap: 6px; padding: 4px 12px 6px; border-bottom: 1px solid var(--border); }
 .allc-group { padding: 4px 0; border-bottom: 1px solid var(--border); }
 .allc-group:last-child { border-bottom: none; }
 .allc-section { margin: 4px 12px; font-size: 12px; font-weight: 600; color: var(--muted); }

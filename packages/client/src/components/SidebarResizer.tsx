@@ -31,6 +31,32 @@ export function useSidebarWidth() {
   return [width, set] as const;
 }
 
+const HIDDEN_KEY = "sourcebook.sidebarHidden";
+
+/** Whether the left sidebar is hidden (home and editor), remembered per browser. */
+export function useSidebarHidden() {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(HIDDEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const set = (h: boolean) => {
+    setHidden(h);
+    try {
+      if (h) localStorage.setItem(HIDDEN_KEY, "1");
+      else localStorage.removeItem(HIDDEN_KEY);
+    } catch {
+      // preference only
+    }
+  };
+  return [hidden, set] as const;
+}
+
+/** Ctrl+\ (⌘+\ on macOS): hide or show the sidebar. */
+export const isSidebarShortcut = (e: KeyboardEvent) => (e.ctrlKey || e.metaKey) && !e.altKey && e.key === "\\";
+
 /**
  * Handle on the sidebar's right edge: drag to resize, arrow keys to adjust, double-click to reset.
  */

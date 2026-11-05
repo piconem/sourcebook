@@ -3,6 +3,7 @@ import { useUser } from "../api/queries";
 import { AppearanceDialog } from "./AppearanceDialog";
 import { Avatar } from "./Avatar";
 import { ScrollModeButton } from "./ScrollModeButton";
+import { ZoomControl } from "./Zoom";
 import type { ScrollMode } from "./scrollMode";
 import type { NotebookKind } from "@sourcebook/shared";
 import { routeHref } from "../router";
@@ -21,6 +22,12 @@ export function TopBar(props: {
   onScrollModeChange(m: ScrollMode): void;
   /** Receives the element where the open editor renders its own buttons (editor only). */
   actionsSlot?(el: HTMLElement | null): void;
+  /** Left sidebar shown or hidden. */
+  sidebarHidden?: boolean;
+  onSidebarToggle?(): void;
+  /** Zoom of the document area (editor only). */
+  zoom?: number;
+  onZoomChange?(z: number): void;
 }) {
   const { crumb, scrollMode, onScrollModeChange } = props;
   const { data: user } = useUser();
@@ -31,6 +38,21 @@ export function TopBar(props: {
   return (
     <header className="topbar">
       <div className="topbar-left">
+      {props.onSidebarToggle && (
+        <button
+          className="icon topbar-btn sidebar-toggle"
+          title={props.sidebarHidden ? "Show sidebar (Ctrl+\\)" : "Hide sidebar (Ctrl+\\)"}
+          aria-label={props.sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+          aria-pressed={!props.sidebarHidden}
+          onClick={props.onSidebarToggle}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16" />
+            {props.sidebarHidden ? <path d="m13 10 2 2-2 2" /> : <path d="m16 10-2 2 2 2" />}
+          </svg>
+        </button>
+      )}
       <a className="brand" href="#/projects" title="Home — all projects">
         <img className="brand-logo" src={logo} alt="" aria-hidden="true" />
         <span>Sourcebook</span>
@@ -48,6 +70,7 @@ export function TopBar(props: {
       </div>
       <div className="topbar-actions">
       {props.actionsSlot && <div className="topbar-editor-actions" ref={props.actionsSlot} />}
+      {props.zoom !== undefined && props.onZoomChange && <ZoomControl zoom={props.zoom} onChange={props.onZoomChange} />}
       {scrollMode && <ScrollModeButton mode={scrollMode} onChange={onScrollModeChange} />}
       <button className="icon topbar-btn" title="Appearance / theme" aria-label="Appearance" onClick={() => setAppearance(true)}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -31,10 +31,10 @@ function NavLink({ kind, active }: { kind: NotebookKind; active: boolean }) {
 }
 
 /** Home: projects and templates collections. */
-export function HomePage({ kind }: { kind: NotebookKind }) {
+export function HomePage({ kind, sidebarHidden = false }: { kind: NotebookKind; sidebarHidden?: boolean }) {
   return (
-    <div className="app home">
-      <aside className="sidebar">
+    <div className={`app home${sidebarHidden ? " sidebar-hidden" : ""}`}>
+      <aside className="sidebar" hidden={sidebarHidden}>
         <nav className="sidebar-nav home-nav" aria-label="Workspace">
           <NavLink kind="projects" active={kind === "projects"} />
           <NavLink kind="templates" active={kind === "templates"} />

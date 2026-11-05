@@ -1,4 +1,5 @@
 import { useAppearance } from "../theme/AppearanceContext";
+import type { SurfaceMode } from "../theme/appearance";
 import { LIGHT_SURFACE, THEMES, themeById, type SurfacePalette, type Theme } from "../theme/themes";
 import { Dialog } from "./Dialog";
 
@@ -19,7 +20,12 @@ function Swatch({ theme, surface }: { theme: Theme; surface: SurfacePalette }) {
 
 export function AppearanceDialog({ open, onClose }: { open: boolean; onClose(): void }) {
   const { prefs, setPrefs, theme } = useAppearance();
-  const surfaceFor = (t: Theme) => (t.scheme === "dark" && prefs.lightSurfaces ? LIGHT_SURFACE : t.surface);
+  const surfaceFor = (t: Theme) => (t.scheme === "dark" && prefs.surfaces === "all" ? LIGHT_SURFACE : t.surface);
+  const modes: { mode: SurfaceMode; label: string; hint: string }[] = [
+    { mode: "theme", label: "Dark, like the theme", hint: "every block follows the theme" },
+    { mode: "text", label: "Light text", hint: "Markdown blocks light for reading; code, data and diagrams stay dark" },
+    { mode: "all", label: "Light blocks", hint: "text fields, editors and previews all light" },
+  ];
   const system = { light: themeById("light")!, dark: themeById("dark")! };
 
   return (
@@ -55,14 +61,17 @@ export function AppearanceDialog({ open, onClose }: { open: boolean; onClose(): 
           </button>
         ))}
       </div>
-      <label className={`check${theme.scheme === "dark" ? "" : " disabled"}`}>
-        <input
-          type="checkbox"
-          checked={prefs.lightSurfaces}
-          onChange={(e) => setPrefs({ ...prefs, lightSurfaces: e.target.checked })}
-        />
-        Keep text fields, editors and previews light in dark themes
-      </label>
+      <fieldset className={`surface-modes${theme.scheme === "dark" ? "" : " disabled"}`}>
+        <legend>Blocks in dark themes</legend>
+        {modes.map(({ mode, label, hint }) => (
+          <label key={mode} className="check">
+            <input type="radio" name="surface-mode" checked={prefs.surfaces === mode} onChange={() => setPrefs({ ...prefs, surfaces: mode })} />
+            <span>
+              {label} <span className="muted small">— {hint}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
       {theme.scheme !== "dark" && <p className="muted small">Applies when a dark theme is active.</p>}
     </Dialog>
   );

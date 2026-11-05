@@ -2,3 +2,10 @@ packages:
   - packages/*
 allowBuilds:
   esbuild: true
+# Security fixes in libraries bundled by others (same major version, so nothing changes for them):
+# nanoid and lodash-es come with Excalidraw, katex with remark-math and mermaid.
+overrides:
+  nanoid@>=3 <4: ^3.3.18
+  nanoid@>=4 <6: ^5.1.16   # 4.x has no fixed release; 5 keeps the same API (nanoid())
+  lodash-es@<5: ^4.18.1
+  katex@<0.19: ^0.18.10

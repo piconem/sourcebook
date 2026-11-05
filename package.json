@@ -12,8 +12,8 @@
     "start": "pnpm build && pnpm --filter @sourcebook/server start"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.1.0"
   }
 }

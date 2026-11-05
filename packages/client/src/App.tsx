@@ -9,7 +9,7 @@ import { BlockView } from "./components/BlockView";
 import { ExportDialog } from "./components/ExportDialog";
 import { DocumentView } from "./components/DocumentView";
 import { OutlineTree } from "./components/OutlineTree";
-import { SidebarResizer, useSidebarWidth } from "./components/SidebarResizer";
+import { SidebarResizer, isSidebarShortcut, useSidebarHidden, useSidebarWidth } from "./components/SidebarResizer";
 import { loadScrollMode, saveScrollMode, type ScrollMode } from "./components/scrollMode";
 import { HomePage } from "./home/HomePage";
 import { AskAiButton } from "./ai/AskAiButton";
@@ -22,6 +22,7 @@ import { EditorActions } from "./notifications/EditorActions";
 import { ReloadDialog } from "./notifications/ReloadDialog";
 import { outlineNumbers, withDepth } from "./tree";
 import { TopBar } from "./components/TopBar";
+import { stepZoom, useZoom } from "./components/Zoom";
 import { ReferencesBrowser } from "./references/ReferencesBrowser";
 import { ReferencesProvider, useReferences } from "./references/ReferencesContext";
 import { BibliographyPage } from "./bibliography/BibliographyPage";
@@ -70,6 +71,9 @@ function ProjectEditor({
   target,
   actionsSlot,
   readOnly,
+  sidebarHidden,
+  zoom,
+  onZoomChange,
 }: {
   kind: NotebookKind;
   id: string;
@@ -80,6 +84,11 @@ function ProjectEditor({
   target?: Target;
   /** Top bar element where the editor's own buttons (notifications, comments) are rendered. */
   actionsSlot: HTMLElement | null;
+  /** Left sidebar hidden: the document takes the whole width. */
+  sidebarHidden: boolean;
+  /** Zoom of the document area (1 = 100%). */
+  zoom: number;
+  onZoomChange(z: number): void;
 }) {
   const qc = useQueryClient();
   useState(() => {
@@ -101,6 +110,27 @@ function ProjectEditor({
   const [page, setPage] = useState<"block" | "references" | "bibliography">("block");
   const [scrollTo, setScrollTo] = useState<{ id: string; seq: number } | null>(null);
   const main = useRef<HTMLElement>(null);
+  // Ctrl + wheel (or a touchpad pinch) over the document zooms it, like in a word processor — not the whole page.
+  // Drawings keep the wheel: Excalidraw zooms its own canvas.
+  const zoomRef = useRef({ zoom, onZoomChange, acc: 0 });
+  zoomRef.current.zoom = zoom;
+  zoomRef.current.onZoomChange = onZoomChange;
+  useEffect(() => {
+    const el = main.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || (e.target as Element).closest?.(".drawing")) return;
+      e.preventDefault();
+      const z = zoomRef.current;
+      z.acc += e.deltaY;
+      if (Math.abs(z.acc) < 40) return;
+      const next = stepZoom(z.zoom, z.acc < 0 ? 1 : -1);
+      z.acc = 0;
+      if (next !== z.zoom) z.onZoomChange(next);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  });
   const [focus, setFocus] = useState<FocusRequest | null>(null);
   // Target of the URL already shown (so recording our own navigation in the URL does not trigger it again).
   const shownTarget = useRef<string | null>(null);
@@ -180,8 +210,12 @@ function ProjectEditor({
     <AskAiProvider project={{ kind, id, name: project.name }}>
     <ReferencesProvider>
     <BibliographyProvider onGoTo={selectBlock}>
-    <div className={`app${readOnly ? " read-only" : ""}`} style={{ gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr)` }}>
-      <aside className="sidebar">
+    <div
+      className={`app${readOnly ? " read-only" : ""}${sidebarHidden ? " sidebar-hidden" : ""}`}
+      style={{ gridTemplateColumns: sidebarHidden ? "minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)` }}
+    >
+      {/* Hidden, not removed: the outline keeps its state (scroll, renaming) when shown again. */}
+      <aside className="sidebar" hidden={sidebarHidden}>
         <div className="sidebar-head">
           <h1 title={project.name}>{project.name}</h1>
           {kind === "templates" && <span className="badge-template" title="Projects created from this template start with a copy of it">Template</span>}
@@ -213,11 +247,12 @@ function ProjectEditor({
           </button>
         </div>
       </aside>
-      <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />
+      {!sidebarHidden && <SidebarResizer width={sidebarWidth} onChange={setSidebarWidth} />}
       <main
         ref={main}
         className={`main${page !== "block" ? " main-references" : ""}${scrollMode === "document" && page === "block" ? " main-document" : ""}`}
       >
+        <div className="main-zoom" style={{ zoom, ["--sb-zoom" as string]: zoom }}>
         {page === "references" ? (
           <ReferencesBrowser />
         ) : page === "bibliography" ? (
@@ -235,6 +270,7 @@ function ProjectEditor({
         ) : (
           <p className="muted">No sections yet — create one with “+ Section”.</p>
         )}
+        </div>
       </main>
       <ExportDialog open={exporting} onClose={() => setExporting(false)} />
       <ReloadDialog request={reloadRequest} project={project} onClose={() => setReloadRequest(null)} goTo={goTo} />
@@ -258,6 +294,18 @@ export function App() {
     setScrollModeState(m);
   };
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
+  const [sidebarHidden, setSidebarHidden] = useSidebarHidden();
+  const [zoom, setZoom] = useZoom();
+  const toggleSidebar = () => setSidebarHidden(!sidebarHidden);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isSidebarShortcut(e)) return;
+      e.preventDefault();
+      setSidebarHidden(!sidebarHidden);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sidebarHidden]); // eslint-disable-line react-hooks/exhaustive-deps
   const summary = useQuery({
     queryKey: ["summary", route.kind, route.page === "editor" ? route.id : ""],
     queryFn: () => api.getNotebookSummary(route.kind, (route as { id: string }).id),
@@ -270,9 +318,13 @@ export function App() {
         scrollMode={route.page === "editor" ? scrollMode : undefined}
         onScrollModeChange={setScrollMode}
         actionsSlot={route.page === "editor" ? setActionsSlot : undefined}
+        sidebarHidden={sidebarHidden}
+        onSidebarToggle={toggleSidebar}
+        zoom={route.page === "editor" ? zoom : undefined}
+        onZoomChange={setZoom}
       />
       {route.page === "home" ? (
-        <HomePage kind={route.kind} />
+        <HomePage kind={route.kind} sidebarHidden={sidebarHidden} />
       ) : (
         <ProjectEditor
           key={`${route.kind}/${route.id}`}
@@ -282,6 +334,9 @@ export function App() {
           target={route.target}
           actionsSlot={actionsSlot}
           readOnly={summary.data?.access === "read"}
+          sidebarHidden={sidebarHidden}
+          zoom={zoom}
+          onZoomChange={setZoom}
         />
       )}
     </div>

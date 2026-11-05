@@ -1,5 +1,6 @@
 import fastifyMultipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import { registerSecurityHeaders } from "./securityHeaders.js";
 import Fastify from "fastify";
 import {
   hasZodFastifySchemaValidationErrors,
@@ -66,7 +67,7 @@ export interface AppOptions {
   clientDist?: string | null;
   /** Offer the MCP server over stdio (default true; off in a container, see config.ts). */
   mcpStdio?: boolean;
-  /** Add the templates shipped with Sourcebook (Sourcebook Demo) to the workspace, once each (default false). */
+  /** Add the templates shipped with Sourcebook (Sourcebook Demo and the example templates) to the workspace, once each (default false). */
   seedTemplates?: boolean;
 }
 
@@ -140,6 +141,8 @@ export async function buildApp(workspaceDir: string, opts: AppOptions = {}) {
     if (status >= 500) app.log.error(err);
     return reply.code(status).send({ error: (err as Error).message });
   });
+
+  registerSecurityHeaders(app);
 
   // Who makes the request: web session or agent token (after the MCP-settings hook above).
   app.addHook("onRequest", authHook(auth));

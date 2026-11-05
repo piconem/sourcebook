@@ -217,8 +217,10 @@ a guided tour of every block type.
 | [REST API](docs/rest-api.md) | every endpoint, with examples for scripts |
 | [File format](docs/file-format.md) | how projects are stored on disk |
 | [Development](docs/development.md) | repository layout, commands, adding a block type |
+| [Releasing](docs/releasing.md) | step-by-step checklist: version, notes, tag, GitHub release, Docker image |
 | [Design decisions](docs/decisions.md) | implementation choices and known limitations |
 | [Screenshots](docs/screenshots.md) | the application in use, full size with captions |
+| [Release notes](docs/releases/) | what changed in each version: [0.2.0](docs/releases/0.2.0.md) · [0.1.0](docs/releases/0.1.0.md) |
 | [Libraries and licenses](docs/libraries.md) | the open-source libraries Sourcebook is built on |
 
 ## License

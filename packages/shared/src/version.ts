@@ -2,5 +2,5 @@
 export const APP_NAME = "Sourcebook";
 export const APP_VERSION = "0.2.0";
 /** ISO date (YYYY-MM-DD). */
-export const RELEASE_DATE = "2026-10-24";
+export const RELEASE_DATE = "2026-11-05";
 export const APP_DESCRIPTION = "Structured design documents and notebooks, editable by people and AI assistants (MCP).";

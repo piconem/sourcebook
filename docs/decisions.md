@@ -133,8 +133,12 @@ preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
   an entry to `THEMES`; `appearance.test.ts` checks every theme defines the same tokens and `contrast.test.ts`
   enforces WCAG AA contrast (4.5:1 for text and syntax colors, 3:1 for accents).
 - **Two layers.** Elements with the `.surface` class (sub-block bodies, objectives, CodeMirror) remap the UI
-  tokens to surface tokens, so nested components need no theme-specific rules. The option "keep editing
-  surfaces light" swaps the surface palette of a dark theme with the light one.
+  tokens to surface tokens, so nested components need no theme-specific rules. In dark themes the setting
+  *Blocks in dark themes* chooses the surface palette: **dark** like the theme, **light text** (only Markdown
+  sub-blocks light, for long reading; code, data and diagrams stay dark) or **light blocks** (every surface light).
+  Light text: a second palette (`--t-*`, `--tsyn-*`) is applied to `.surface-text` elements (Markdown bodies),
+  which map `--s-*` / `--syn-*` to it. It is a viewer preference, not a per-block flag stored in the project: the
+  same document reads differently for each person.
 - Built-in themes: Light, Dark, Sepia, Midnight, plus **System** (follows `prefers-color-scheme`, live).
 - Third-party renderers follow the surface scheme: CodeMirror (theme + `HighlightStyle` on CSS variables),
   lowlight/highlight.js classes mapped to `--syn-*`, Excalidraw `theme` prop, mermaid `theme: "dark"` for the
@@ -267,7 +271,7 @@ preference (`sourcebook.sidebarWidth` in localStorage, like the scrolling mode).
 - The avatar at the top right opens a menu (it used to open Settings directly): name and @username, "Settings…" and
   "About Sourcebook…" (dialog with name, description, version and release date).
 - Name, version, release date and description are constants in `packages/shared/src/version.ts`, used by the client
-  and as the MCP server's version. 0.2.0, released 2026-10-24; the `package.json` versions follow by hand.
+  and as the MCP server's version. 0.2.0, released 2026-11-05; `scripts/release.sh prepare` keeps the `package.json` versions and the README badge in sync.
 
 ## Outline: collapsing sections
 - Every section with sub-sections has an arrow to collapse it; "Expand all / Collapse all" above the outline. The

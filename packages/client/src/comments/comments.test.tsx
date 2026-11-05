@@ -35,6 +35,11 @@ beforeEach(() => {
     const json = (d: unknown, status = 200) => new Response(JSON.stringify(d), { status, headers: { "content-type": "application/json" } });
     if (url === "/api/user") return method === "PUT" ? json((user = body)) : json(user);
     if (url === "/api/blocks/b1") return json(block);
+    const del = /^\/api\/blocks\/b1\/subblocks\/(\w+)\/comments\/(\w+)$/.exec(url);
+    if (del && method === "DELETE") {
+      comments[del[1]] = comments[del[1]].filter((c) => c.id !== del[2]);
+      return new Response(null, { status: 204 });
+    }
     const m = /^\/api\/blocks\/b1\/subblocks\/(\w+)\/comments(?:\/(\w+)\/replies)?$/.exec(url);
     if (m) {
       const list = comments[m[1]];
@@ -129,6 +134,48 @@ describe("sub-block comments", () => {
     expect($$(".comment-entry.comment .comment-text", panel).map((e) => e.textContent)).toEqual(["First remark", "Second remark"]);
     expect($$(".comment-entry.reply .comment-text", panel).map((e) => e.textContent)).toEqual(["An answer"]);
     expect($(".comment-count", row1).textContent).toBe("2");
+  });
+});
+
+describe("deleting comments", () => {
+  const resolved = (id: string, text: string): Comment => ({
+    id, author: { name: "Anna Bianchi", username: "annab" }, createdAt: "2026-09-02T10:00:00Z", text, replies: [],
+    resolution: { by: { name: "Anna Bianchi", username: "annab" }, at: "2026-09-03T10:00:00Z" },
+  });
+
+  it("deletes a thread with the trash button after confirming", async () => {
+    await render(<BlockView blockId="b1" onDeleted={() => {}} />, ".subblock");
+    const row2 = $$(".subblock-row:not(.insert-row)")[1];
+    await click($(".comment-toggle", row2));
+    const panel = $(".comments-panel", row2);
+    await click(button("Delete comment", panel));
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false); // asks first
+    await click(button("Keep", panel));
+    await click(button("Delete comment", panel));
+    await click(button("Delete", panel));
+    expect(calls.filter((c) => c.method === "DELETE").map((c) => c.url)).toEqual(["/api/blocks/b1/subblocks/s2/comments/c0"]);
+    expect($$(".comment-text", panel)).toHaveLength(0);
+  });
+
+  it("deletes a collapsed resolved thread, or every resolved thread at once", async () => {
+    comments.s2.push(resolved("r1", "Done one"), resolved("r2", "Done two"));
+    await render(<BlockView blockId="b1" onDeleted={() => {}} />, ".subblock");
+    const row2 = $$(".subblock-row:not(.insert-row)")[1];
+    await click($(".comment-toggle", row2));
+    const panel = $(".comments-panel", row2);
+    expect($$(".comment-thread.collapsed", panel)).toHaveLength(2);
+
+    await click(button("Delete resolved thread", $$(".comment-thread.collapsed", panel)[0]));
+    await click(button("Delete", panel));
+    expect($$(".comment-thread.collapsed", panel).map((e) => e.textContent)).toEqual([expect.stringContaining("Done two")]);
+
+    // A thread resolved meanwhile elsewhere is not deleted: only the ones shown are.
+    comments.s2.push(resolved("r3", "Done three"));
+    await click(button("Delete 1 resolved thread", panel));
+    await click(button("Delete 1 resolved", panel));
+    expect(calls.filter((c) => c.method === "DELETE").map((c) => c.url.split("/").pop())).toEqual(["r1", "r2"]);
+    expect($$(".comment-thread.collapsed", panel)).toHaveLength(1); // r3 appeared on refresh
+    expect($(".comment-text", panel).textContent).toBe("Old note"); // open threads stay
   });
 });
 

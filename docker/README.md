@@ -110,6 +110,35 @@ token: *Settings → AI assistant* shows the ready-made commands. Only **HTTP** 
 the AI client would start the MCP process itself, on its own machine, and it cannot start it inside the container — so
 the image sets `SOURCEBOOK_CONTAINER=1`, Settings shows stdio as unavailable and the server refuses stdio calls.
 
+## Security
+
+What the image does by itself:
+
+- runs as an unprivileged user (uid 1000, or `SOURCEBOOK_UID`), and is reachable only from this machine by default
+  (`SOURCEBOOK_BIND=127.0.0.1`);
+- every request needs a session (sign-in) or an access token. Passwords are stored as scrypt hashes; session and
+  token secrets are stored only as hashes, in `/data/.sourcebook/`. The session cookie is `HttpOnly`,
+  `SameSite=Strict`, and `Secure` when `SOURCEBOOK_PUBLIC_URL` is `https://…`. After 5 failed sign-ins for the same
+  username and address, sign-in waits (doubling, up to 15 minutes);
+- users see only the projects they were given access to, and agents never have more rights than their user;
+- uploaded and reference files (SVG, HTML…) opened directly in the browser run in a sandbox (`Content-Security-Policy:
+  sandbox`), so a file cannot act with the rights of whoever opens it. Every response carries `nosniff`, frames only
+  from Sourcebook itself, and `Referrer-Policy: same-origin`.
+
+What is up to you when it is reachable from other machines:
+
+- **HTTPS**: the container speaks plain HTTP. Put a reverse proxy with a certificate in front of it (see
+  [above](#behind-a-reverse-proxy-under-a-path)), with `SOURCEBOOK_PUBLIC_URL=https://…` and
+  `SOURCEBOOK_TRUST_PROXY=true` (real client address for the sign-in limit, `Secure` cookie). Do not expose port
+  4000 directly (`SOURCEBOOK_BIND=0.0.0.0`) outside a trusted network.
+- **First password**: set `SOURCEBOOK_ADMIN_PASSWORD`, otherwise a generated one is printed in the logs (it must be
+  changed at the first sign-in either way).
+- **Backups and updates**: back up the data folder (it holds the accounts too); pull new versions of the image for
+  security fixes.
+
+Known limits: the sign-in limit is kept in memory (it starts over when the container restarts); there is no audit log
+beyond the authors of comments and notifications.
+
 ## Publish (GHCR)
 
 Not done automatically. When a version is ready (committed, version raised in `package.json`):
@@ -121,5 +150,18 @@ docker/push.sh                       # builds amd64 + arm64 and pushes :<version
 ```
 
 It refuses uncommitted changes and versions already published. Building arm64 on an amd64 machine needs QEMU once:
-`docker run --privileged --rm tonistiigi/binfmt --install all`. A new package on GHCR is private: make it public in
-its settings on GitHub so that anyone can `docker pull ghcr.io/piconem/sourcebook`.
+`docker run --privileged --rm tonistiigi/binfmt --install all`. Part of a release: see the
+[step-by-step checklist](../docs/releasing.md) (classic token with `write:packages`, login, publishing, visibility).
+
+**Visibility.** A new package on GHCR is **private**. Once, after the first push: GitHub → your profile → *Packages* →
+`sourcebook` → *Package settings* → *Change visibility* → **Public**; later versions stay public.
+- Anyone can then `docker pull ghcr.io/piconem/sourcebook` (and run the compose file) **without an account or a
+  login**; only publishing needs a token. Public packages cost nothing (storage and downloads).
+- **It cannot be undone**: a public container package cannot be made private again, only deleted (whole, or
+  version by version).
+- The label `org.opencontainers.image.source` in the Dockerfile links the package to the repository: GitHub shows it
+  under the repository's *Packages*, with the README and the license. The repository and the package have separate
+  visibility.
+- The image holds no personal data: `.env`, `docker/data`, `.git`, `.claude`, docs and tests stay out of the build
+  (`Dockerfile.dockerignore`); workspace, accounts, passwords and tokens live only in the `/data` volume of each
+  installation, which starts empty (an owner with its own password and the bundled templates).

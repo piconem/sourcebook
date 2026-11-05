@@ -9,6 +9,7 @@ import {
 import { normalize } from "node:path";
 import { badRequest } from "../errors.js";
 import { subBlocksUnder } from "./subblocks.js";
+import { UNTRUSTED_FILE_CSP } from "../securityHeaders.js";
 
 export const blockRoutes =
   (): FastifyPluginAsyncZod =>
@@ -50,7 +51,8 @@ export const blockRoutes =
     app.get("/blocks/:id/files/*", { schema: { params: BlockFilesParamsSchema } }, async (req, reply) => {
       const rel = normalize(req.params["*"]);
       if (rel.startsWith("..") || rel.startsWith("/")) throw badRequest("Invalid path");
-      reply.header("cache-control", "no-cache");
+      // Uploaded files (an SVG can hold scripts): sandboxed when opened directly, like reference files.
+      reply.header("cache-control", "no-cache").header("content-security-policy", UNTRUSTED_FILE_CSP);
       return reply.sendFile(rel, req.nb.store.blockDir(req.params.id));
     });
   };

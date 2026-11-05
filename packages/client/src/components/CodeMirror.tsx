@@ -7,7 +7,10 @@ import { useEffect, useRef } from "react";
 
 // Colors are CSS variables of the active theme, so one CodeMirror theme serves every app theme.
 const theme = EditorView.theme({
-  "&": { fontSize: "13px", border: "1px solid var(--border)", borderRadius: "6px", background: "var(--field)", color: "var(--text)" },
+  // --sb-zoom: zoom of the document area. CodeMirror measures its layout itself and breaks under CSS zoom (the
+  // gutter covers the text, clicks land on the wrong column), so the zoom is undone on it (styles.css) and
+  // applied to its font size instead.
+  "&": { fontSize: "calc(13px * var(--sb-zoom, 1))", border: "1px solid var(--border)", borderRadius: "6px", background: "var(--field)", color: "var(--text)" },
   "&.cm-focused": { outline: "2px solid var(--accent-soft)" },
   ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
   ".cm-content": { caretColor: "var(--text)" },
